@@ -1,3 +1,5 @@
+import type { Board } from "./jobs.types";
+
 export type Gender = "male" | "female" | "other";
 
 export interface SeekerProfile {
@@ -14,6 +16,8 @@ export interface SeekerProfile {
   highest_qualification: string;
   experience_years: number | null;
   skills: string; // comma separated
+  subjects: string[]; // teaching categories only
+  boards: Board[]; // teaching categories only
   expected_salary: number | null; // INR per month
   state_id: number | null;
   state_name?: string;
@@ -32,6 +36,8 @@ export interface SeekerProfilePayload {
   highest_qualification: string;
   experience_years: number | null;
   skills: string;
+  subjects: string[];
+  boards: Board[];
   expected_salary: number | null;
   state_id: number | null;
   city_id: number | null;

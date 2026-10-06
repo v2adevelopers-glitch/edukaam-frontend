@@ -1,7 +1,19 @@
-import type { ApplicationStatus } from "./applications.types";
+import type { ApplicationStatus, InterviewMode } from "./applications.types";
 import type { Opening } from "./jobs.types";
 
 export type StatusBreakdown = Record<ApplicationStatus, number>;
+
+export interface UpcomingInterview {
+  application_id: number;
+  application_code: string;
+  date: string;
+  time: string;
+  mode: InterviewMode;
+  venue: string;
+  job_title: string;
+  seeker_name?: string; // provider view
+  institution_name?: string; // seeker view
+}
 
 export interface ProviderDashboard {
   open_jobs: number;
@@ -19,6 +31,7 @@ export interface ProviderDashboard {
     status: ApplicationStatus;
     applied_on: string;
   }[];
+  upcoming_interviews: UpcomingInterview[];
 }
 
 export interface SeekerDashboard {
@@ -28,6 +41,7 @@ export interface SeekerDashboard {
   hired: number;
   applications_by_status: StatusBreakdown;
   newest_jobs: Opening[];
+  upcoming_interviews: UpcomingInterview[];
 }
 
 export interface ProviderDashboardResponse {

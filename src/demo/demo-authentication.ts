@@ -106,7 +106,7 @@ export const demoAuthentication = {
         const sid = nextId(d.seeker_profiles);
         d.seeker_profiles.push({
           id: sid, user_id: id, seeker_code: makeCode("SKR", sid), full_name: name, mobile, email,
-          gender: "", dob: "", job_category_id: Number(payload.job_category_id), highest_qualification: "",
+          gender: "", dob: "", job_category_id: Number(payload.job_category_id), highest_qualification: "", subjects: [], boards: [],
           experience_years: null, skills: "", expected_salary: null, state_id: null, city_id: null,
           about: "", updated_at: nowIso(),
         });

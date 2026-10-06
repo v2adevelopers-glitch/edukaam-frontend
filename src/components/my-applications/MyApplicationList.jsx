@@ -10,8 +10,10 @@ import Swal from 'sweetalert2';
 import ContentLoader from '../loader/ContentLoader';
 import DetailView from '../common/DetailView';
 import { applicationsService } from '../../services/applications.service';
-import { APPLICATION_STATUS_COLORS, APPLICATION_STATUS_OPTIONS, JOB_TYPE_OPTIONS, optionLabel } from '../../constants/options';
-import { formatDate, formatDateTime } from '../../helper/dateHelper';
+import {
+  APPLICATION_STATUS_COLORS, APPLICATION_STATUS_OPTIONS, BOARD_OPTIONS, INTERVIEW_MODE_OPTIONS, JOB_TYPE_OPTIONS, optionLabel,
+} from '../../constants/options';
+import { formatDate, formatDateTime, formatInterviewWhen, isPastDate } from '../../helper/dateHelper';
 import { experienceText, formatLocation, salaryRange } from '../../helper/stringMethods';
 import { SOMETHING_WENT_WRONG } from '../../constants/strings';
 
@@ -203,6 +205,22 @@ const MyApplicationList = () => {
 
   const filterInput = { borderRadius: 8, border: "1px solid #e8edf5", background: "#f8f9fe", fontSize: 13, height: 34 };
   const actionBtn = (bg, color) => ({ width: 32, height: 32, borderRadius: 8, background: bg, color, border: 'none', padding: 0 });
+  const venueLabel = (mode) => (mode === "video" ? "Meeting Link" : mode === "phone" ? "Call Details" : "Venue");
+
+  // interview line shown under the status while the application is at the interview stage
+  const interviewLine = (item) => {
+    if (item?.status !== "interview") return null;
+    if (!item?.interview) return <div className="mt-1" style={{ fontSize: 11, color: "#8a9ab5" }}>Interview time not set yet</div>;
+    const past = isPastDate(item.interview.date);
+    return (
+      <div className="mt-1" style={{ fontSize: 11, color: past ? "#8a9ab5" : "#6741d9", whiteSpace: "nowrap" }}>
+        <i className="bi bi-calendar-event me-1"></i>{formatInterviewWhen(item.interview.date, item.interview.time)}
+        <span className="ms-1">· {optionLabel(INTERVIEW_MODE_OPTIONS, item.interview.mode)}</span>
+        {past && <span className="ms-1">(past)</span>}
+      </div>
+    );
+  }
+
   const badge = (status) => {
     const c = APPLICATION_STATUS_COLORS[status] || APPLICATION_STATUS_COLORS.applied;
     return { display: "inline-block", fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 12, background: c.bg, color: c.color, whiteSpace: "nowrap" };
@@ -274,7 +292,7 @@ const MyApplicationList = () => {
 
         {/* Table */}
         <div className="card border-0 shadow-sm" style={{ borderRadius: 14, overflow: "hidden" }}>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', minHeight: loading && items.length === 0 ? 120 : undefined }}>
             {loading && (
               <div style={{
                 position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -284,7 +302,7 @@ const MyApplicationList = () => {
                 <ContentLoader loaderType="circleSpin" />
               </div>
             )}
-            <div className="table-responsive">
+            <div className="table-responsive d-none d-md-block">
               <table className="table table-hover align-middle mb-0">
                 <thead>
                   <tr style={{ background: "#f8f9fe" }}>
@@ -324,7 +342,10 @@ const MyApplicationList = () => {
                           </div>
                         </td>
                         <td style={{ whiteSpace: "nowrap" }}>{formatDate(item?.applied_on)}</td>
-                        <td><span style={badge(item?.status)}>{statusLabel(item?.status)}</span></td>
+                        <td>
+                          <span style={badge(item?.status)}>{statusLabel(item?.status)}</span>
+                          {interviewLine(item)}
+                        </td>
                         <td className="text-center">
                           <div className="d-flex align-items-center justify-content-center gap-2">
                             <button className="btn btn-sm d-flex align-items-center justify-content-center" onClick={() => handleView(item?.id)} title="View" style={actionBtn('#e6f7f1', '#0f8a5f')}>
@@ -347,6 +368,57 @@ const MyApplicationList = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Phone layout: one card per application with large tap targets */}
+            <div className="d-md-none">
+              {items.map((item) => {
+                const canWithdraw = item?.status === "applied";
+                return (
+                  <div key={item?.id} className="p-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
+                    <div className="d-flex justify-content-between align-items-start gap-2">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="fw-bold text-dark" style={{ fontSize: 15 }}>{item?.job_title}</div>
+                        <div style={{ fontSize: 13, color: "#4a5568" }}>{item?.institution_name}</div>
+                      </div>
+                      <span style={badge(item?.status)}>{statusLabel(item?.status)}</span>
+                    </div>
+                    <div className="mt-2 d-grid gap-1" style={{ fontSize: 13, color: "#4a5568" }}>
+                      <div><i className="bi bi-geo-alt me-2 text-muted"></i>{formatLocation(item?.job_city_name, item?.job_state_name)}</div>
+                      <div><i className="bi bi-clock-history me-2 text-muted"></i>Applied on {formatDate(item?.applied_on)}</div>
+                      {item?.job_status === "closed" && <div style={{ color: "#d64545" }}><i className="bi bi-lock me-2"></i>This job is now closed</div>}
+                    </div>
+                    {item?.status === "interview" && item?.interview && (
+                      <div className="mt-2 p-2" style={{ background: "#f3f0ff", borderRadius: 8, fontSize: 13, color: "#4b3f8f" }}>
+                        <div className="fw-semibold"><i className="bi bi-calendar-event me-2"></i>{formatInterviewWhen(item.interview.date, item.interview.time)}</div>
+                        <div style={{ fontSize: 12 }}>
+                          {optionLabel(INTERVIEW_MODE_OPTIONS, item.interview.mode)}
+                          {item.interview.venue && <> · {item.interview.mode === "video"
+                            ? <a href={item.interview.venue} target="_blank" rel="noopener noreferrer">Join link</a>
+                            : item.interview.venue}</>}
+                        </div>
+                      </div>
+                    )}
+                    <div className="d-flex gap-2 mt-3">
+                      <button type="button" className="btn d-flex align-items-center gap-2 px-3" onClick={() => handleView(item?.id)}
+                        style={{ background: "#e6f7f1", color: "#0f8a5f", borderRadius: 8, height: 40, fontSize: 13, fontWeight: 600, border: "none" }}>
+                        <i className="bi bi-eye-fill"></i> View
+                      </button>
+                      {canWithdraw && (
+                        <button type="button" className="btn d-flex align-items-center gap-2 px-3" onClick={() => handleWithdraw(item)}
+                          style={{ background: "#fce8e6", color: "#d93025", borderRadius: 8, height: 40, fontSize: 13, fontWeight: 600, border: "none" }}>
+                          <i className="bi bi-trash-fill"></i> Withdraw
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {!loading && items.length === 0 && (
+                <div className="text-center text-muted py-4 px-3" style={{ fontSize: 13 }}>
+                  No applications found. <Link to="/openings/list">Find jobs</Link> to apply.
+                </div>
+              )}
             </div>
           </div>
 
@@ -390,12 +462,27 @@ const MyApplicationList = () => {
                 { label: "Status", value: statusLabel(viewItem.status), badge: true, badgeColors: APPLICATION_STATUS_COLORS[viewItem.status] },
                 { label: "Applied On", value: formatDateTime(viewItem.applied_on) },
                 { label: "Last Updated", value: formatDateTime(viewItem.updated_at) },
+                ...(viewItem.interview ? [
+                  { label: "Interview", value: `${formatInterviewWhen(viewItem.interview.date, viewItem.interview.time)}${isPastDate(viewItem.interview.date) ? " (past)" : ""}` },
+                  { label: "Interview Mode", value: optionLabel(INTERVIEW_MODE_OPTIONS, viewItem.interview.mode) },
+                  {
+                    label: venueLabel(viewItem.interview.mode), full: true,
+                    value: viewItem.interview.mode === "video" && viewItem.interview.venue
+                      ? <a href={viewItem.interview.venue} target="_blank" rel="noopener noreferrer">{viewItem.interview.venue}</a>
+                      : viewItem.interview.venue,
+                  },
+                  { label: "Note from the Institution", value: viewItem.interview.note, full: true },
+                ] : []),
                 { label: "Job Title", value: viewItem.job_title },
                 { label: "Job Code", value: viewItem.job_code },
                 { label: "Institution", value: viewItem.institution_name },
                 { label: "Institution Type", value: viewItem.institution_type_name },
                 { label: "Job Category", value: viewItem.job_category_name },
                 { label: "Job Type", value: optionLabel(JOB_TYPE_OPTIONS, viewItem.job_type) },
+                ...(viewItem.job_subject || viewItem.job_board ? [
+                  { label: "Subject", value: viewItem.job_subject },
+                  { label: "Board", value: optionLabel(BOARD_OPTIONS, viewItem.job_board) },
+                ] : []),
                 { label: "Location", value: formatLocation(viewItem.job_city_name, viewItem.job_state_name) },
                 { label: "Salary", value: salaryRange(viewItem.job_salary_min, viewItem.job_salary_max) },
                 { label: "Vacancies", value: viewItem.job_vacancies },

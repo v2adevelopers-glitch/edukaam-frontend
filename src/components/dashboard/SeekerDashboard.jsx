@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom';
 import Chart from 'react-apexcharts';
+import moment from 'moment';
 import toast from 'react-hot-toast';
 import withReactContent from 'sweetalert2-react-content';
 import Swal from 'sweetalert2';
@@ -8,8 +9,8 @@ import ContentLoader from '../loader/ContentLoader';
 import PageTitleAndSnackBar from '../common/PageTitleAndSnackBar';
 import { DContext } from '../../context/DContext';
 import { dashboardService } from '../../services/dashboard.service';
-import { JOB_TYPE_OPTIONS, optionLabel } from '../../constants/options';
-import { daysUntil, formatDate } from '../../helper/dateHelper';
+import { INTERVIEW_MODE_OPTIONS, JOB_TYPE_OPTIONS, optionLabel } from '../../constants/options';
+import { daysUntil, formatDate, formatInterviewWhen } from '../../helper/dateHelper';
 import { formatLocation, salaryRange } from '../../helper/stringMethods';
 import { STATUS_SERIES, statusDonutOptions } from './chartTheme';
 import { SOMETHING_WENT_WRONG } from '../../constants/strings';
@@ -49,6 +50,35 @@ const SeekerDashboard = () => {
   const sent = summary?.applications_sent || 0;
   const jobs = summary?.newest_jobs || [];
 
+  const interviewsCard = (interviews, who) => (
+    <div className="card">
+      <div className="card-body pb-2">
+        <h5 className="card-title">Upcoming Interviews <span>| next {Math.max(interviews.length, 1)}</span></h5>
+        {interviews.map(iv => (
+          <div key={iv?.application_id} className="d-flex align-items-start gap-3 py-2" style={{ borderTop: "1px solid #f0f2f5" }}>
+            <div className="rounded d-flex flex-column align-items-center justify-content-center"
+              style={{ width: 46, height: 46, background: "#f3f0ff", color: "#6741d9", flexShrink: 0, lineHeight: 1.1 }}>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>{moment(iv?.date).format("DD")}</span>
+              <span style={{ fontSize: 10, textTransform: "uppercase" }}>{moment(iv?.date).format("MMM")}</span>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div className="fw-semibold text-dark" style={{ fontSize: 13 }}>{who(iv)}</div>
+              <div className="text-muted" style={{ fontSize: 12 }}>{iv?.job_title}</div>
+              <div style={{ fontSize: 12, color: "#4a5568" }}>
+                {formatInterviewWhen(iv?.date, iv?.time)} · {optionLabel(INTERVIEW_MODE_OPTIONS, iv?.mode)}
+              </div>
+            </div>
+          </div>
+        ))}
+        {interviews.length === 0 && (
+          <div className="text-center text-muted py-4" style={{ fontSize: 13, borderTop: "1px solid #f0f2f5" }}>
+            No interviews scheduled.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const statCard = (cls, title, sub, icon, value, note) => (
     <div className="col-12 col-sm-6 col-xl-4">
       <div className={"card info-card " + cls}>
@@ -83,6 +113,14 @@ const SeekerDashboard = () => {
         {statCard("customers-card", "Shortlisted", "now", "bi-star", summary?.shortlisted ?? 0, `${byStatus?.interview ?? 0} at interview stage`)}
         {statCard("revenue-card", "Hired", "all time", "bi-person-check", summary?.hired ?? 0, null)}
       </div>
+
+      {(summary?.upcoming_interviews || []).length > 0 && (
+        <div className="row">
+          <div className="col-12">
+            {interviewsCard(summary.upcoming_interviews, (iv) => iv?.institution_name)}
+          </div>
+        </div>
+      )}
 
       <div className="row">
         <div className="col-12 col-lg-5">

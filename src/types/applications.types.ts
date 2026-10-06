@@ -1,8 +1,17 @@
 import type { Pagination } from "./common.types";
-import type { JobType, JobStatus } from "./jobs.types";
+import type { Board, JobType, JobStatus } from "./jobs.types";
 import type { Gender } from "./seeker-profile.types";
 
 export type ApplicationStatus = "applied" | "shortlisted" | "interview" | "hired" | "rejected";
+export type InterviewMode = "in_person" | "video" | "phone";
+
+export interface InterviewDetails {
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm (24h)
+  mode: InterviewMode;
+  venue: string; // address for in person, meeting link for video, optional for phone
+  note: string;
+}
 
 // GET /applications is scoped by the token: a provider receives the applications on their own
 // jobs, a seeker receives their own applications.
@@ -21,6 +30,7 @@ export interface Application {
   job_id: number;
   seeker_id: number;
   status: ApplicationStatus;
+  interview: InterviewDetails | null; // set by the provider when the status moves to interview
   applied_on: string; // ISO datetime
   updated_at: string;
 
@@ -29,6 +39,8 @@ export interface Application {
   job_title?: string;
   job_type?: JobType;
   job_status?: JobStatus;
+  job_subject?: string;
+  job_board?: Board | "";
   job_category_id?: number;
   job_category_name?: string;
   job_city_name?: string;
@@ -51,6 +63,8 @@ export interface ApplicationDetail extends Application {
   seeker_dob?: string;
   seeker_category_name?: string;
   seeker_skills?: string;
+  seeker_subjects?: string[];
+  seeker_boards?: Board[];
   seeker_expected_salary?: number | null;
   seeker_city_name?: string;
   seeker_state_name?: string;
@@ -82,6 +96,12 @@ export interface ApplicationDetailResponse {
 
 export interface ApplicationPayload {
   job_id: number;
+}
+
+// Provider status change; interview details are required when the status is "interview"
+export interface ApplicationStatusPayload {
+  status: ApplicationStatus;
+  interview?: InterviewDetails;
 }
 
 export interface ApplicationMutationResponse {

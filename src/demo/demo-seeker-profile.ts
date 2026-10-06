@@ -7,7 +7,9 @@ import type {
 import { getDb, nowIso, todayYmd, updateDb } from "./demo-db";
 import { fail, ok, SESSION_EXPIRED } from "./demo-response";
 import { currentUserWithRole } from "./demo-session";
-import { seekerProfileOf, seekerProfileView } from "./demo-views";
+import { isTeachingCategory, seekerProfileOf, seekerProfileView } from "./demo-views";
+
+const BOARDS = ["cbse", "icse", "state_board", "ib", "igcse", "university", "competitive"];
 
 const validate = (p: SeekerProfilePayload): string | null => {
   const db = getDb();
@@ -18,6 +20,7 @@ const validate = (p: SeekerProfilePayload): string | null => {
   if (!db.job_categories.some((c) => c.id === Number(p?.job_category_id))) return "Primary job category is required.";
   if (p?.experience_years !== null && p?.experience_years !== undefined && p.experience_years < 0) return "Experience cannot be negative.";
   if (p?.expected_salary !== null && p?.expected_salary !== undefined && p.expected_salary < 0) return "Expected salary cannot be negative.";
+  if (Array.isArray(p?.boards) && p.boards.some((b) => !BOARDS.includes(b))) return "Select valid boards.";
   if (p?.state_id && !db.states.some((s) => s.id === Number(p.state_id))) return "Select a valid state.";
   if (p?.city_id && !db.cities.some((c) => c.id === Number(p.city_id) && c.state_id === Number(p.state_id))) {
     return "Select a city in the chosen state.";
@@ -53,6 +56,9 @@ export const demoSeekerProfile = {
         highest_qualification: String(payload.highest_qualification ?? "").trim(),
         experience_years: payload.experience_years ?? null,
         skills: String(payload.skills ?? "").split(",").map((s) => s.trim()).filter(Boolean).join(", "),
+        // subjects and boards only mean something for teaching categories
+        subjects: isTeachingCategory(db, Number(payload.job_category_id)) && Array.isArray(payload.subjects) ? Array.from(new Set(payload.subjects.map(String))) : [],
+        boards: isTeachingCategory(db, Number(payload.job_category_id)) && Array.isArray(payload.boards) ? Array.from(new Set(payload.boards)) : [],
         expected_salary: payload.expected_salary ?? null,
         state_id: payload.state_id ? Number(payload.state_id) : null,
         city_id: payload.city_id ? Number(payload.city_id) : null,

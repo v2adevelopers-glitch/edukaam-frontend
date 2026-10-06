@@ -5,9 +5,9 @@
  */
 import type {
   ApplicationDetailResponse, ApplicationFilter, ApplicationListResponse, ApplicationMutationResponse,
-  ApplicationPayload, ApplicationStatus,
+  ApplicationPayload, ApplicationStatus, ApplicationStatusPayload, InterviewDetails,
 } from "../types/applications.types";
-import { getDb, makeCode, nextId, nowIso, updateDb, type DemoApplication, type DemoDb } from "./demo-db";
+import { getDb, makeCode, nextId, nowIso, todayYmd, updateDb, type DemoApplication, type DemoDb } from "./demo-db";
 import { listQuery } from "./demo-list";
 import { fail, ok, SESSION_EXPIRED } from "./demo-response";
 import { currentUser } from "./demo-session";
@@ -16,6 +16,20 @@ import { applicationDetailView, applicationView, byNewest, isExpired, providerPr
 const STATUSES: ApplicationStatus[] = ["applied", "shortlisted", "interview", "hired", "rejected"];
 const STATUS_LABEL: Record<ApplicationStatus, string> = {
   applied: "Applied", shortlisted: "Shortlisted", interview: "Interview", hired: "Hired", rejected: "Rejected",
+};
+
+const INTERVIEW_MODES = ["in_person", "video", "phone"];
+
+// server-side check of the interview details a provider sends with the "interview" status
+const validateInterview = (i: InterviewDetails | undefined, previous: InterviewDetails | null): string | null => {
+  if (!i) return "Interview date, time and mode are required.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(i.date ?? ""))) return "Interview date is required.";
+  if (i.date !== previous?.date && i.date < todayYmd()) return "Interview date cannot be in the past.";
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(i.time ?? ""))) return "Interview time is required.";
+  if (!INTERVIEW_MODES.includes(String(i.mode))) return "Interview mode is required.";
+  if (i.mode === "in_person" && !String(i.venue ?? "").trim()) return "Venue is required for an in-person interview.";
+  if (i.mode === "video" && !/^https?:\/\/\S+$/.test(String(i.venue ?? "").trim())) return "Enter a valid meeting link starting with http:// or https://.";
+  return null;
 };
 
 // applications the caller is allowed to see
@@ -68,7 +82,7 @@ export const demoApplications = {
       const id = nextId(d.applications);
       const app: DemoApplication = {
         id, application_code: makeCode("APP", id), job_id: job.id, seeker_id: user.id,
-        status: "applied", applied_on: nowIso(), updated_at: nowIso(),
+        status: "applied", interview: null, applied_on: nowIso(), updated_at: nowIso(),
       };
       d.applications.push(app);
       return app;
@@ -77,8 +91,9 @@ export const demoApplications = {
     return ok(`Application for "${job.title}" sent to ${institution}.`, { data: applicationView(getDb(), created) }, 201);
   },
 
-  // provider changes the application status; filling the last vacancy closes the job
-  async update(id: number | string, payload: { status: ApplicationStatus }): Promise<ApplicationMutationResponse> {
+  // provider changes the application status (with interview details for "interview");
+  // filling the last vacancy closes the job
+  async update(id: number | string, payload: ApplicationStatusPayload): Promise<ApplicationMutationResponse> {
     const user = currentUser();
     if (!user) return fail(SESSION_EXPIRED, 401);
     if (user.role_code !== "job_provider") return fail("Only the institution can change an application status.", 403);
@@ -87,7 +102,12 @@ export const demoApplications = {
     if (!app) return fail("Application not found.", 404);
     const status = payload?.status;
     if (!STATUSES.includes(status)) return fail("Invalid application status.", 422);
-    if (status === app.status) return ok(`Status is already ${STATUS_LABEL[status]}.`, { data: applicationView(db, app) });
+    const rescheduling = status === "interview" && app.status === "interview";
+    if (status === app.status && !rescheduling) return ok(`Status is already ${STATUS_LABEL[status]}.`, { data: applicationView(db, app) });
+    if (status === "interview") {
+      const error = validateInterview(payload?.interview, app.interview);
+      if (error) return fail(error, 422);
+    }
 
     const job = db.jobs.find((j) => j.id === app.job_id);
     if (!job) return fail("Job not found.", 404);
@@ -99,6 +119,14 @@ export const demoApplications = {
     const result = updateDb((d) => {
       const target = d.applications.find((a) => a.id === app.id) as DemoApplication;
       target.status = status;
+      if (status === "interview" && payload.interview) {
+        const i = payload.interview;
+        target.interview = {
+          date: i.date, time: i.time, mode: i.mode,
+          venue: i.mode === "phone" ? String(i.venue ?? "").trim() : String(i.venue).trim(),
+          note: String(i.note ?? "").trim(),
+        };
+      }
       target.updated_at = nowIso();
       const targetJob = d.jobs.find((j) => j.id === job.id);
       let jobClosed = false;
@@ -112,7 +140,10 @@ export const demoApplications = {
 
     const name = seekerProfileOf(db, app.seeker_id)?.full_name ?? "Applicant";
     return ok(
-      status === "hired" ? `${name} has been hired.` : `${name} marked as ${STATUS_LABEL[status]}.`,
+      status === "hired" ? `${name} has been hired.`
+        : rescheduling ? `Interview details for ${name} updated.`
+          : status === "interview" ? `Interview scheduled with ${name}.`
+            : `${name} marked as ${STATUS_LABEL[status]}.`,
       { data: applicationView(getDb(), result.target), job_closed: result.jobClosed, job_title: job.title, job_vacancies: job.vacancies },
     );
   },

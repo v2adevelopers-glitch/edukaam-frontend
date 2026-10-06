@@ -36,3 +36,27 @@ export const APPLICATION_STATUS_COLORS = {
 };
 
 export const optionLabel = (options, value) => options.find((o) => o.value === value)?.label || value || "";
+
+// Subjects and boards used to match teaching jobs with teachers. Stored values are the labels
+// (subjects) and codes (boards) below.
+export const SUBJECT_OPTIONS = [
+  "All Subjects (Primary)", "Mathematics", "Physics", "Chemistry", "Biology", "General Science",
+  "English", "Hindi", "Sanskrit", "Social Science", "History", "Geography", "Economics", "Commerce",
+  "Accountancy", "Computer Science", "Physical Education", "Music", "Art & Craft",
+].map((s) => ({ value: s, label: s }));
+
+export const BOARD_OPTIONS = [
+  { value: "cbse", label: "CBSE" },
+  { value: "icse", label: "ICSE / ISC" },
+  { value: "state_board", label: "State Board" },
+  { value: "ib", label: "IB" },
+  { value: "igcse", label: "Cambridge (IGCSE)" },
+  { value: "university", label: "University / UGC" },
+  { value: "competitive", label: "Competitive Exams (JEE / NEET)" },
+];
+
+export const INTERVIEW_MODE_OPTIONS = [
+  { value: "in_person", label: "In person" },
+  { value: "video", label: "Video call" },
+  { value: "phone", label: "Phone call" },
+];

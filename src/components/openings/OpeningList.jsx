@@ -14,7 +14,9 @@ import { applicationsService } from '../../services/applications.service';
 import { institutionTypesService } from '../../services/institution-types.service';
 import { statesService } from '../../services/states.service';
 import { citiesService } from '../../services/cities.service';
-import { APPLICATION_STATUS_COLORS, APPLICATION_STATUS_OPTIONS, JOB_TYPE_OPTIONS, optionLabel } from '../../constants/options';
+import {
+  APPLICATION_STATUS_COLORS, APPLICATION_STATUS_OPTIONS, BOARD_OPTIONS, JOB_TYPE_OPTIONS, SUBJECT_OPTIONS, optionLabel,
+} from '../../constants/options';
 import { daysUntil, formatDate } from '../../helper/dateHelper';
 import { experienceText, formatLocation, salaryRange } from '../../helper/stringMethods';
 import { SOMETHING_WENT_WRONG } from '../../constants/strings';
@@ -37,15 +39,17 @@ const OpeningList = () => {
   const [loading, setLoading] = useState(false);
   const [listRes, setListRes] = useState({ pagination: {}, data: [] });
   // the backend always limits openings to the seeker's own category and tells us which one
-  const [category, setCategory] = useState({ id: null, name: "" });
+  const [category, setCategory] = useState({ id: null, name: "", isTeaching: false });
 
   const [pageValue, setPageValue] = useState(1);
   const [pagingLimit, setPagingLimit] = useState("10");
   const [goPage, setGoPage] = useState("");
 
-  const initialFilters = { search: "", institution_type_id: "", job_type: "", state_id: "", city_id: "" };
+  const initialFilters = { search: "", institution_type_id: "", job_type: "", state_id: "", city_id: "", subject: "", board: "" };
   const [filters, setFilters] = useState(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState(initialFilters);
+  // phones show only the search box until "More filters" is tapped
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   const [institutionTypeOptions, setInstitutionTypeOptions] = useState([]);
   const [stateOptions, setStateOptions] = useState([]);
@@ -110,7 +114,11 @@ const OpeningList = () => {
           pagination: res.resData?.pagination || {},
           data: res.resData?.data || []
         })
-        setCategory({ id: res.resData?.job_category_id ?? null, name: res.resData?.job_category_name || "" });
+        setCategory({
+          id: res.resData?.job_category_id ?? null,
+          name: res.resData?.job_category_name || "",
+          isTeaching: Boolean(res.resData?.job_category_is_teaching),
+        });
       } else {
         toast.error(res?.message);
       }
@@ -211,6 +219,7 @@ const OpeningList = () => {
   const canApplyCount = items.filter(v => !v?.has_applied && !v?.is_expired).length;
   const fromRecord = totalRecords === 0 ? 0 : (pageValue - 1) * Number(pagingLimit) + 1;
   const toRecord = Math.min(pageValue * Number(pagingLimit), totalRecords);
+  const activeExtraFilters = Object.keys(initialFilters).filter(k => k !== "search" && appliedFilters[k]).length;
 
   const getPageNumbers = () => {
     if (totalPage <= 5) return Array.from({ length: totalPage }, (_, i) => i + 1);
@@ -227,6 +236,8 @@ const OpeningList = () => {
   const csvHeaders = [
     { label: "Code", key: "job_code" },
     { label: "Title", key: "title" },
+    { label: "Subject", key: "subject" },
+    { label: "Board", key: "board_label" },
     { label: "Institution", key: "institution_name" },
     { label: "Institution Type", key: "institution_type_name" },
     { label: "Type", key: "job_type_label" },
@@ -238,7 +249,12 @@ const OpeningList = () => {
     { label: "Last Date", key: "last_date" },
     { label: "Applied", key: "applied_label" },
   ];
-  const csvData = items.map(v => ({ ...v, job_type_label: optionLabel(JOB_TYPE_OPTIONS, v?.job_type), applied_label: v?.has_applied ? "Yes" : "No" }));
+  const csvData = items.map(v => ({
+    ...v,
+    job_type_label: optionLabel(JOB_TYPE_OPTIONS, v?.job_type),
+    board_label: optionLabel(BOARD_OPTIONS, v?.board),
+    applied_label: v?.has_applied ? "Yes" : "No",
+  }));
 
   const pageBtn = (active, disabled) => ({
     minWidth: 32, height: 32, padding: "0 8px", borderRadius: 8,
@@ -257,18 +273,58 @@ const OpeningList = () => {
   const actionBtn = (bg, color) => ({ width: 32, height: 32, borderRadius: 8, background: bg, color, border: 'none', padding: 0 });
   const tag = (bg, color) => ({ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 10, background: bg, color, whiteSpace: "nowrap" });
   const lockedCategory = category.name ? [{ value: String(category.id), label: category.name }] : [];
+  // on phones the extra filters hide behind "More filters"; from md up they are always visible
+  const extraFilterCls = (cls) => `${cls} ${showMoreFilters ? "" : "d-none"} d-md-block`;
 
-  const lastDateCell = (item) => {
+  const lastDateTag = (item) => {
     const left = daysUntil(item?.last_date);
+    if (item?.is_expired) return <span style={tag("#fdecec", "#d64545")}>Expired</span>;
+    if (left !== null && left <= 7) return <span style={tag("#fff4e6", "#e8590c")}>{left === 0 ? "Last day" : `${left} day${left === 1 ? "" : "s"} left`}</span>;
+    return null;
+  }
+
+  // "Your subject" / "Your board" when the job matches the seeker's profile
+  const matchTags = (item) => (
+    <>
+      {item?.subject_match && <span style={tag("#e6f7f1", "#0f8a5f")}><i className="bi bi-check2"></i> Your subject</span>}
+      {item?.board_match && <span style={tag("#e7f5ff", "#1971c2")}><i className="bi bi-check2"></i> Your board</span>}
+    </>
+  );
+
+  const subjectLine = (item) => [item?.subject, optionLabel(BOARD_OPTIONS, item?.board)].filter(Boolean).join(" · ");
+
+  const applyAction = (item, large = false) => {
+    if (item?.has_applied) {
+      return (
+        <span style={{ ...tag("#d4edda", "#155724"), ...(large ? { height: 40, padding: "0 14px", fontSize: 13, borderRadius: 8 } : {}) }}
+          title={`Status: ${optionLabel(APPLICATION_STATUS_OPTIONS, item?.application_status)}`}>
+          <i className="bi bi-check2-circle"></i> Applied
+        </span>
+      );
+    }
+    if (item?.is_expired) {
+      return (
+        <span style={{ ...tag("#f1f3f5", "#868e96"), ...(large ? { height: 40, padding: "0 14px", fontSize: 13, borderRadius: 8 } : {}) }} title="The last date to apply has passed">
+          <i className="bi bi-slash-circle"></i> Closed
+        </span>
+      );
+    }
+    if (large) {
+      return (
+        <button type="button" className="btn d-flex align-items-center gap-2 text-white fw-semibold px-3" onClick={() => handleApplyJob(item)}
+          style={{ background: "#4f3df5", borderRadius: 8, height: 40, fontSize: 13 }}>
+          <i className="bi bi-send-fill"></i> Apply
+        </button>
+      );
+    }
     return (
-      <>
-        <div>{formatDate(item?.last_date)}</div>
-        {item?.is_expired
-          ? <span style={tag("#fdecec", "#d64545")}>Expired</span>
-          : left !== null && left <= 7 && <span style={tag("#fff4e6", "#e8590c")}>{left === 0 ? "Last day" : `${left} day${left === 1 ? "" : "s"} left`}</span>}
-      </>
+      <button className="btn btn-sm d-flex align-items-center justify-content-center" onClick={() => handleApplyJob(item)} title="Apply" style={actionBtn('#4f3df5', '#fff')}>
+        <i className="bi bi-send-fill" style={{ fontSize: 13 }}></i>
+      </button>
     );
   }
+
+  const emptyText = `No open jobs found${category.name ? ` for ${category.name}` : ""}. Try clearing the filters, or check back later.`;
 
   return (
     <>
@@ -304,7 +360,7 @@ const OpeningList = () => {
               <div className="col-12 col-md-6 col-xl-3">
                 <input type="text" className="form-control" name="search" placeholder="Search job title or institution" value={filters.search} onChange={handleFilterChange} style={filterInput} />
               </div>
-              <div className="col-12 col-sm-6 col-md-6 col-xl-2" title="Jobs are shown for your primary job category. Change it from My Profile.">
+              <div className={extraFilterCls("col-12 col-sm-6 col-md-6 col-xl-2")} title="Jobs are shown for your primary job category. Change it from My Profile.">
                 <Select
                   options={lockedCategory}
                   value={lockedCategory[0] || null}
@@ -315,7 +371,33 @@ const OpeningList = () => {
                   components={{ DropdownIndicator: () => <i className="bi bi-lock-fill px-2" style={{ color: "#8a9ab5", fontSize: 12 }}></i>, IndicatorSeparator: null }}
                 />
               </div>
-              <div className="col-6 col-md-3 col-xl-2">
+              {category.isTeaching && (
+                <>
+                  <div className={extraFilterCls("col-6 col-md-3 col-xl-2")}>
+                    <Select
+                      options={SUBJECT_OPTIONS}
+                      value={SUBJECT_OPTIONS.find(o => o.value === filters.subject) || null}
+                      onChange={(o) => setFilters({ ...filters, subject: o ? o.value : "" })}
+                      placeholder="Subject"
+                      isClearable
+                      menuPortalTarget={document.body}
+                      styles={selectStyles}
+                    />
+                  </div>
+                  <div className={extraFilterCls("col-6 col-md-3 col-xl-2")}>
+                    <Select
+                      options={BOARD_OPTIONS}
+                      value={BOARD_OPTIONS.find(o => o.value === filters.board) || null}
+                      onChange={(o) => setFilters({ ...filters, board: o ? o.value : "" })}
+                      placeholder="Board"
+                      isClearable
+                      menuPortalTarget={document.body}
+                      styles={selectStyles}
+                    />
+                  </div>
+                </>
+              )}
+              <div className={extraFilterCls("col-6 col-md-3 col-xl-2")}>
                 <Select
                   options={institutionTypeOptions}
                   value={institutionTypeOptions.find(o => o.value === filters.institution_type_id) || null}
@@ -326,7 +408,7 @@ const OpeningList = () => {
                   styles={selectStyles}
                 />
               </div>
-              <div className="col-6 col-md-3 col-xl-1">
+              <div className={extraFilterCls("col-6 col-md-3 col-xl-1")}>
                 <Select
                   options={JOB_TYPE_OPTIONS}
                   value={JOB_TYPE_OPTIONS.find(o => o.value === filters.job_type) || null}
@@ -337,7 +419,7 @@ const OpeningList = () => {
                   styles={selectStyles}
                 />
               </div>
-              <div className="col-6 col-md-3 col-xl-2">
+              <div className={extraFilterCls("col-6 col-md-3 col-xl-2")}>
                 <Select
                   options={stateOptions}
                   value={stateOptions.find(o => o.value === filters.state_id) || null}
@@ -348,7 +430,7 @@ const OpeningList = () => {
                   styles={selectStyles}
                 />
               </div>
-              <div className="col-6 col-md-3 col-xl-2">
+              <div className={extraFilterCls("col-6 col-md-3 col-xl-2")}>
                 <Select
                   options={cityOptions}
                   value={cityOptions.find(o => o.value === filters.city_id) || null}
@@ -360,12 +442,17 @@ const OpeningList = () => {
                   styles={selectStyles}
                 />
               </div>
-              <div className="col-12 col-md-auto d-flex gap-2">
+              <div className="col-12 col-md-auto d-flex gap-2 flex-wrap">
                 <button type="submit" className="btn btn-sm d-flex align-items-center gap-1 text-white px-3" style={{ background: "#4f3df5", borderRadius: 8, height: 34, fontSize: 13, fontWeight: 600 }}>
                   <i className="bi bi-search"></i> Apply
                 </button>
                 <button type="button" onClick={handleReset} className="btn btn-sm d-flex align-items-center gap-1 px-3" style={{ background: "#fff", border: "1px solid #e8edf5", borderRadius: 8, height: 34, fontSize: 13, color: "#444" }}>
                   <i className="bi bi-arrow-counterclockwise"></i> Reset
+                </button>
+                <button type="button" onClick={() => setShowMoreFilters(!showMoreFilters)} aria-expanded={showMoreFilters}
+                  className="btn btn-sm d-flex d-md-none align-items-center gap-1 px-3 ms-auto" style={{ background: "#fff", border: "1px solid #e8edf5", borderRadius: 8, height: 34, fontSize: 13, color: "#4f3df5", fontWeight: 600 }}>
+                  <i className={showMoreFilters ? "bi bi-chevron-up" : "bi bi-funnel"}></i>
+                  {showMoreFilters ? "Fewer filters" : `More filters${activeExtraFilters ? ` (${activeExtraFilters})` : ""}`}
                 </button>
               </div>
             </div>
@@ -379,9 +466,9 @@ const OpeningList = () => {
           <span style={chip("#1971c2", "#e7f5ff", "#a5d8ff")}><i className="bi bi-circle-fill" style={{ fontSize: 7 }}></i><b>{appliedCount}</b> Already applied on this page</span>
         </div>
 
-        {/* Table */}
+        {/* Table (cards on phones) */}
         <div className="card border-0 shadow-sm" style={{ borderRadius: 14, overflow: "hidden" }}>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', minHeight: loading && items.length === 0 ? 120 : undefined }}>
             {loading && (
               <div style={{
                 position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -391,7 +478,7 @@ const OpeningList = () => {
                 <ContentLoader loaderType="circleSpin" />
               </div>
             )}
-            <div className="table-responsive">
+            <div className="table-responsive d-none d-md-block">
               <table className="table table-hover align-middle mb-0">
                 <thead>
                   <tr style={{ background: "#f8f9fe" }}>
@@ -416,7 +503,10 @@ const OpeningList = () => {
                           </div>
                           <div style={{ minWidth: 150 }}>
                             <div className="fw-semibold text-dark" style={{ fontSize: 13 }}>{item?.title}</div>
-                            <div className="text-muted" style={{ fontSize: 11 }}>{item?.job_code} · {optionLabel(JOB_TYPE_OPTIONS, item?.job_type)}</div>
+                            <div className="text-muted" style={{ fontSize: 11 }}>
+                              {[item?.job_code, optionLabel(JOB_TYPE_OPTIONS, item?.job_type), subjectLine(item)].filter(Boolean).join(" · ")}
+                            </div>
+                            {(item?.subject_match || item?.board_match) && <div className="d-flex gap-1 mt-1 flex-wrap">{matchTags(item)}</div>}
                           </div>
                         </div>
                       </td>
@@ -429,36 +519,61 @@ const OpeningList = () => {
                       </td>
                       <td style={{ whiteSpace: "nowrap" }}>{salaryRange(item?.salary_min, item?.salary_max)}</td>
                       <td>{item?.vacancies}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>{lastDateCell(item)}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <div>{formatDate(item?.last_date)}</div>
+                        {lastDateTag(item)}
+                      </td>
                       <td className="text-center">
                         <div className="d-flex align-items-center justify-content-center gap-2">
                           <button className="btn btn-sm d-flex align-items-center justify-content-center" onClick={() => handleView(item?.id)} title="View" style={actionBtn('#e6f7f1', '#0f8a5f')}>
                             <i className="bi bi-eye-fill" style={{ fontSize: 13 }}></i>
                           </button>
-                          {item?.has_applied ? (
-                            <span style={tag("#d4edda", "#155724")} title={`Status: ${optionLabel(APPLICATION_STATUS_OPTIONS, item?.application_status)}`}>
-                              <i className="bi bi-check2-circle"></i> Applied
-                            </span>
-                          ) : item?.is_expired ? (
-                            <span style={tag("#f1f3f5", "#868e96")} title="The last date to apply has passed">
-                              <i className="bi bi-slash-circle"></i> Closed
-                            </span>
-                          ) : (
-                            <button className="btn btn-sm d-flex align-items-center justify-content-center" onClick={() => handleApplyJob(item)} title="Apply" style={actionBtn('#4f3df5', '#fff')}>
-                              <i className="bi bi-send-fill" style={{ fontSize: 13 }}></i>
-                            </button>
-                          )}
+                          {applyAction(item)}
                         </div>
                       </td>
                     </tr>
                   ))}
                   {!loading && items.length === 0 && (
-                    <tr><td colSpan={7} className="text-center text-muted py-4" style={{ fontSize: 13 }}>
-                      No open jobs found{category.name ? ` for ${category.name}` : ""}. Try clearing the filters, or check back later.
-                    </td></tr>
+                    <tr><td colSpan={7} className="text-center text-muted py-4" style={{ fontSize: 13 }}>{emptyText}</td></tr>
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Phone layout: one card per job with large tap targets */}
+            <div className="d-md-none">
+              {items.map((item) => (
+                <div key={item?.id} className="p-3" style={{ borderBottom: "1px solid #f0f2f5", opacity: item?.is_expired && !item?.has_applied ? 0.75 : 1 }}>
+                  <div className="d-flex justify-content-between align-items-start gap-2">
+                    <div style={{ minWidth: 0 }}>
+                      <div className="fw-bold text-dark" style={{ fontSize: 15 }}>{item?.title}</div>
+                      <div style={{ fontSize: 13, color: "#4a5568" }}>{item?.institution_name}</div>
+                    </div>
+                    <span style={tag("#f1f3fb", "#4b3f8f")}>{optionLabel(JOB_TYPE_OPTIONS, item?.job_type)}</span>
+                  </div>
+                  {subjectLine(item) && <div className="mt-1" style={{ fontSize: 12, color: "#6c757d" }}>{subjectLine(item)}</div>}
+                  {(item?.subject_match || item?.board_match) && <div className="d-flex gap-1 mt-2 flex-wrap">{matchTags(item)}</div>}
+                  <div className="mt-2 d-grid gap-1" style={{ fontSize: 13, color: "#4a5568" }}>
+                    <div><i className="bi bi-geo-alt me-2 text-muted"></i>{formatLocation(item?.city_name, item?.state_name)}</div>
+                    <div><i className="bi bi-currency-rupee me-2 text-muted"></i>{salaryRange(item?.salary_min, item?.salary_max)}</div>
+                    <div className="d-flex align-items-center flex-wrap gap-2">
+                      <span><i className="bi bi-calendar-event me-2 text-muted"></i>Apply by {formatDate(item?.last_date)}</span>
+                      {lastDateTag(item)}
+                    </div>
+                    <div><i className="bi bi-people me-2 text-muted"></i>{item?.vacancies} {Number(item?.vacancies) === 1 ? "vacancy" : "vacancies"}</div>
+                  </div>
+                  <div className="d-flex gap-2 mt-3">
+                    <button type="button" className="btn d-flex align-items-center gap-2 px-3" onClick={() => handleView(item?.id)}
+                      style={{ background: "#e6f7f1", color: "#0f8a5f", borderRadius: 8, height: 40, fontSize: 13, fontWeight: 600, border: "none" }}>
+                      <i className="bi bi-eye-fill"></i> View
+                    </button>
+                    {applyAction(item, true)}
+                  </div>
+                </div>
+              ))}
+              {!loading && items.length === 0 && (
+                <div className="text-center text-muted py-4 px-3" style={{ fontSize: 13 }}>{emptyText}</div>
+              )}
             </div>
           </div>
 
@@ -502,6 +617,10 @@ const OpeningList = () => {
                 { label: "Job Code", value: viewItem.job_code },
                 { label: "Job Category", value: viewItem.job_category_name },
                 { label: "Job Type", value: optionLabel(JOB_TYPE_OPTIONS, viewItem.job_type) },
+                ...(viewItem.job_category_is_teaching ? [
+                  { label: "Subject", value: viewItem.subject ? `${viewItem.subject}${viewItem.subject_match ? " (matches your profile)" : ""}` : "" },
+                  { label: "Board", value: viewItem.board ? `${optionLabel(BOARD_OPTIONS, viewItem.board)}${viewItem.board_match ? " (matches your profile)" : ""}` : "" },
+                ] : []),
                 { label: "Vacancies", value: viewItem.vacancies },
                 { label: "Salary", value: salaryRange(viewItem.salary_min, viewItem.salary_max) },
                 { label: "Minimum Qualification", value: viewItem.min_qualification },

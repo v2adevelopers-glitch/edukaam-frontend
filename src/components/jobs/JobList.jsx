@@ -11,7 +11,7 @@ import ContentLoader from '../loader/ContentLoader';
 import DetailView from '../common/DetailView';
 import { jobsService } from '../../services/jobs.service';
 import { jobCategoriesService } from '../../services/job-categories.service';
-import { JOB_STATUS_OPTIONS, JOB_TYPE_OPTIONS, optionLabel } from '../../constants/options';
+import { BOARD_OPTIONS, JOB_STATUS_OPTIONS, JOB_TYPE_OPTIONS, optionLabel } from '../../constants/options';
 import { formatDate, isPastDate } from '../../helper/dateHelper';
 import { experienceText, formatLocation, salaryRange } from '../../helper/stringMethods';
 import { SOMETHING_WENT_WRONG } from '../../constants/strings';
@@ -233,6 +233,8 @@ const JobList = () => {
     { label: "Code", key: "job_code" },
     { label: "Title", key: "title" },
     { label: "Category", key: "job_category_name" },
+    { label: "Subject", key: "subject" },
+    { label: "Board", key: "board_label" },
     { label: "Type", key: "job_type_label" },
     { label: "City", key: "city_name" },
     { label: "State", key: "state_name" },
@@ -244,7 +246,7 @@ const JobList = () => {
     { label: "Last Date", key: "last_date" },
     { label: "Status", key: "status" },
   ];
-  const csvData = items.map(v => ({ ...v, job_type_label: optionLabel(JOB_TYPE_OPTIONS, v?.job_type) }));
+  const csvData = items.map(v => ({ ...v, job_type_label: optionLabel(JOB_TYPE_OPTIONS, v?.job_type), board_label: optionLabel(BOARD_OPTIONS, v?.board) }));
 
   const pageBtn = (active, disabled) => ({
     minWidth: 32, height: 32, padding: "0 8px", borderRadius: 8,
@@ -388,7 +390,9 @@ const JobList = () => {
                             </div>
                             <div style={{ minWidth: 160 }}>
                               <div className="fw-semibold text-dark" style={{ fontSize: 13 }}>{item?.title}</div>
-                              <div className="text-muted" style={{ fontSize: 11 }}>{item?.job_code}</div>
+                              <div className="text-muted" style={{ fontSize: 11 }}>
+                                {[item?.job_code, item?.subject, optionLabel(BOARD_OPTIONS, item?.board)].filter(Boolean).join(" · ")}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -495,6 +499,10 @@ const JobList = () => {
                 { label: "Title", value: viewItem.title },
                 { label: "Job Category", value: viewItem.job_category_name },
                 { label: "Job Type", value: optionLabel(JOB_TYPE_OPTIONS, viewItem.job_type) },
+                ...(viewItem.job_category_is_teaching ? [
+                  { label: "Subject", value: viewItem.subject },
+                  { label: "Board", value: optionLabel(BOARD_OPTIONS, viewItem.board) },
+                ] : []),
                 { label: "Vacancies", value: viewItem.vacancies },
                 { label: "Hired", value: viewItem.hired_count },
                 { label: "Applicants", value: viewItem.applicants_count },

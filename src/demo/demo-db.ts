@@ -12,10 +12,12 @@ import type { State } from "../types/states.types";
 import type { City } from "../types/cities.types";
 import type { ProviderProfile } from "../types/provider-profile.types";
 import type { SeekerProfile } from "../types/seeker-profile.types";
-import type { Job } from "../types/jobs.types";
-import type { ApplicationStatus } from "../types/applications.types";
+import type { Board, Job } from "../types/jobs.types";
+import type { ApplicationStatus, InterviewDetails } from "../types/applications.types";
 
 export const DEMO_DB_KEY = "demo_db_v1";
+// Bump when the stored shape changes; an older saved store is replaced by fresh seed data.
+export const DEMO_DB_VERSION = 2;
 export const DEMO_PASSWORD = "Demo@123";
 
 export interface DemoUser {
@@ -32,7 +34,7 @@ export interface DemoUser {
 
 export type DemoProviderProfile = Omit<ProviderProfile, "institution_type_name" | "state_name" | "city_name">;
 export type DemoSeekerProfile = Omit<SeekerProfile, "job_category_name" | "state_name" | "city_name">;
-export type DemoJob = Omit<Job, "job_category_name" | "state_name" | "city_name" | "applicants_count" | "hired_count">;
+export type DemoJob = Omit<Job, "job_category_name" | "job_category_is_teaching" | "state_name" | "city_name" | "applicants_count" | "hired_count">;
 
 export interface DemoApplication {
   id: number;
@@ -40,12 +42,13 @@ export interface DemoApplication {
   job_id: number;
   seeker_id: number; // user id of the seeker
   status: ApplicationStatus;
+  interview: InterviewDetails | null;
   applied_on: string;
   updated_at: string;
 }
 
 export interface DemoDb {
-  version: 1;
+  version: number;
   seeded_at: string;
   users: DemoUser[];
   provider_profiles: DemoProviderProfile[];
@@ -94,6 +97,8 @@ const CATEGORY_NAMES = [
   "Librarian", "Lab Assistant", "Office Staff", "Driver", "Security Guard", "Peon",
 ];
 // category ids, in the order above
+// the first six categories are teaching roles: their jobs carry a subject and a board
+const TEACHING_CATEGORY_COUNT = 6;
 const CAT = {
   PRIMARY: 1, SECONDARY: 2, LECTURER: 3, PROFESSOR: 4, COACHING: 5, PRINCIPAL: 6,
   LIBRARIAN: 7, LAB: 8, OFFICE: 9, DRIVER: 10, GUARD: 11, PEON: 12,
@@ -231,12 +236,29 @@ const buildSeed = (): DemoDb => {
       "Office upkeep, File movement, Tea and pantry", 12000, "Ghaziabad", "Reliable office helper."],
   ];
 
+  // subjects and boards for the teaching seekers, by email
+  const SEEKER_TEACHING: Record<string, [string[], Board[]]> = {
+    "priya.teacher@example.com": [["Mathematics", "Physics"], ["cbse"]],
+    "rohit.mehra@example.com": [["Physics"], ["cbse", "icse"]],
+    "kavita.joshi@example.com": [["General Science", "Biology"], ["state_board", "cbse"]],
+    "arjun.nair@example.com": [["Chemistry", "Mathematics"], ["cbse", "state_board"]],
+    "neha.gupta@example.com": [["English", "All Subjects (Primary)"], ["cbse"]],
+    "pooja.singh@example.com": [["Hindi", "All Subjects (Primary)"], ["state_board"]],
+    "ananya.rao@example.com": [["English"], ["university"]],
+    "vikram.deshmukh@example.com": [["Commerce", "Accountancy"], ["university"]],
+    "meera.iyer@example.com": [["Computer Science"], ["university"]],
+    "saurabh.jain@example.com": [["Physics"], ["competitive"]],
+    "ritika.agarwal@example.com": [["Chemistry"], ["competitive"]],
+    "rajeev.malhotra@example.com": [[], ["cbse"]],
+  };
+
   seekerSeeds.forEach((s, i) => {
     const [name, email, mobile, gender, dob, cat, qual, exp, skills, salary, city, about] = s;
     const userId = addUser("job_seeker", name, email, mobile, 150 - i * 3);
     seeker_profiles.push({
       id: i + 1, user_id: userId, seeker_code: makeCode("SKR", i + 1), full_name: name, mobile, email, gender, dob,
-      job_category_id: cat, highest_qualification: qual, experience_years: exp, skills, expected_salary: salary,
+      job_category_id: cat, highest_qualification: qual, experience_years: exp, skills,
+      subjects: SEEKER_TEACHING[email]?.[0] ?? [], boards: SEEKER_TEACHING[email]?.[1] ?? [], expected_salary: salary,
       ...loc(city), about, updated_at: daysAgoIso(20 - (i % 10), 12),
     });
   });
@@ -318,12 +340,32 @@ const buildSeed = (): DemoDb => {
       "Drive the college car and staff van for official trips."],
   ];
 
+  // subject and board of the teaching jobs, by title (non-teaching jobs have neither)
+  const JOB_TEACHING: Record<string, [string, Board]> = {
+    "TGT Mathematics": ["Mathematics", "cbse"],
+    "PGT Physics": ["Physics", "cbse"],
+    "TGT Computer Science": ["Computer Science", "cbse"],
+    "PRT English": ["English", "cbse"],
+    "Physics Faculty (JEE)": ["Physics", "competitive"],
+    "Chemistry Faculty (NEET)": ["Chemistry", "competitive"],
+    "Visiting Mathematics Faculty": ["Mathematics", "competitive"],
+    "TGT Science": ["General Science", "state_board"],
+    "TGT Social Science": ["Social Science", "state_board"],
+    "PRT Hindi": ["Hindi", "state_board"],
+    "Principal": ["", "state_board"],
+    "Assistant Lecturer - Commerce": ["Commerce", "university"],
+    "Lecturer - English": ["English", "university"],
+    "Assistant Professor - Computer Science": ["Computer Science", "university"],
+    "PGT Chemistry (Higher Secondary)": ["Chemistry", "state_board"],
+  };
+
   const jobs: DemoJob[] = jobSeeds.map((j, i) => {
     const [provider, title, cat, type, vac, qual, exp, smin, smax, city, lastOffset, status, postedAgo, description] = j;
     const providerUserId = provider_profiles[provider - 1].user_id;
     const id = i + 1;
     return {
-      id, job_code: makeCode("JOB", id), provider_id: providerUserId, title, job_category_id: cat, job_type: type,
+      id, job_code: makeCode("JOB", id), provider_id: providerUserId, title, job_category_id: cat,
+      subject: JOB_TEACHING[title]?.[0] ?? "", board: JOB_TEACHING[title]?.[1] ?? "", job_type: type,
       vacancies: vac, min_qualification: qual, min_experience: exp, salary_min: smin, salary_max: smax, ...loc(city),
       last_date: dayOffset(lastOffset), description, status, created_at: daysAgoIso(postedAgo, 10), updated_at: daysAgoIso(postedAgo, 10),
     };
@@ -340,7 +382,7 @@ const buildSeed = (): DemoDb => {
   const apply = (job: DemoJob, seekerNo: number, status: ApplicationStatus, appliedDaysAgo: number) => {
     const id = applications.length + 1;
     applications.push({
-      id, application_code: makeCode("APP", id), job_id: job.id, seeker_id: S(seekerNo), status,
+      id, application_code: makeCode("APP", id), job_id: job.id, seeker_id: S(seekerNo), status, interview: null,
       applied_on: daysAgoIso(appliedDaysAgo, 9 + (id % 8)),
       updated_at: daysAgoIso(Math.max(0, appliedDaysAgo - (status === "applied" ? 0 : 2)), 15),
     });
@@ -422,14 +464,38 @@ const buildSeed = (): DemoDb => {
   apply(J("Front Office Counsellor", P.BRIGHT), 19, "interview", 8);
   apply(J("Office Peon", P.GREENFIELD), 20, "hired", 45);
 
+  // interview details for every application at the interview stage (one of them already in the past)
+  const INTERVIEW_PLAN: [number, string, InterviewDetails["mode"]][] = [
+    [3, "10:30", "in_person"], [2, "11:00", "video"], [4, "09:30", "in_person"], [-3, "15:00", "phone"],
+    [5, "12:00", "in_person"], [6, "14:00", "video"], [1, "16:30", "phone"], [7, "10:00", "in_person"], [2, "13:30", "video"],
+  ];
+  const NOTES: Record<InterviewDetails["mode"], string> = {
+    in_person: "Please bring your original certificates and two passport size photographs. Report 15 minutes early.",
+    video: "Join from a quiet place with a working camera. A short demo of your teaching or work is welcome.",
+    phone: "We will call you on your registered mobile number at the given time.",
+  };
+  applications.filter((a) => a.status === "interview").forEach((a, i) => {
+    const [offset, time, mode] = INTERVIEW_PLAN[i % INTERVIEW_PLAN.length];
+    const job = jobs.find((x) => x.id === a.job_id) as DemoJob;
+    const provider = provider_profiles.find((p) => p.user_id === job.provider_id);
+    const city = cities.find((c) => c.id === provider?.city_id)?.name ?? "";
+    a.interview = {
+      date: dayOffset(offset),
+      time,
+      mode,
+      venue: mode === "in_person" ? `${provider?.address ?? ""}, ${city}` : mode === "video" ? `https://meet.example.com/${a.application_code.toLowerCase()}` : "",
+      note: NOTES[mode],
+    };
+  });
+
   return {
-    version: 1,
+    version: DEMO_DB_VERSION,
     seeded_at: nowIso(),
     users,
     provider_profiles,
     seeker_profiles,
     job_categories: CATEGORY_NAMES.map((name, i) => ({
-      id: i + 1, code: name.toUpperCase().replace(/[^A-Z]+/g, "_"), name, status: "active",
+      id: i + 1, code: name.toUpperCase().replace(/[^A-Z]+/g, "_"), name, is_teaching: i < TEACHING_CATEGORY_COUNT, status: "active",
     })),
     institution_types: INSTITUTION_TYPE_NAMES.map((name, i) => ({
       id: i + 1, code: name.toUpperCase().replace(/[^A-Z]+/g, "_"), name, status: "active",
@@ -466,7 +532,7 @@ const load = (): DemoDb | null => {
     const raw = localStorage.getItem(DEMO_DB_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as DemoDb;
-    return parsed?.version === 1 && Array.isArray(parsed.jobs) ? parsed : null;
+    return parsed?.version === DEMO_DB_VERSION && Array.isArray(parsed.jobs) ? parsed : null;
   } catch {
     return null;
   }

@@ -8,6 +8,7 @@ import type { SeekerProfile } from "../types/seeker-profile.types";
 import { todayYmd, type DemoApplication, type DemoDb, type DemoJob, type DemoProviderProfile, type DemoSeekerProfile } from "./demo-db";
 
 export const categoryName = (db: DemoDb, id: number | null | undefined) => db.job_categories.find((c) => c.id === id)?.name ?? "";
+export const isTeachingCategory = (db: DemoDb, id: number | null | undefined) => Boolean(db.job_categories.find((c) => c.id === id)?.is_teaching);
 export const institutionTypeName = (db: DemoDb, id: number | null | undefined) => db.institution_types.find((t) => t.id === id)?.name ?? "";
 export const stateName = (db: DemoDb, id: number | null | undefined) => db.states.find((s) => s.id === id)?.name ?? "";
 export const cityName = (db: DemoDb, id: number | null | undefined) => db.cities.find((c) => c.id === id)?.name ?? "";
@@ -39,6 +40,7 @@ export const jobView = (db: DemoDb, job: DemoJob): Job => {
   return {
     ...job,
     job_category_name: categoryName(db, job.job_category_id),
+    job_category_is_teaching: isTeachingCategory(db, job.job_category_id),
     state_name: stateName(db, job.state_id),
     city_name: cityName(db, job.city_id),
     applicants_count: apps.length,
@@ -49,6 +51,9 @@ export const jobView = (db: DemoDb, job: DemoJob): Job => {
 export const openingView = (db: DemoDb, job: DemoJob, seekerUserId: number): Opening => {
   const provider = providerProfileOf(db, job.provider_id);
   const application = db.applications.find((a) => a.job_id === job.id && a.seeker_id === seekerUserId);
+  const seeker = seekerProfileOf(db, seekerUserId);
+  const subjects = seeker?.subjects ?? [];
+  const boards = seeker?.boards ?? [];
   const base = jobView(db, job);
   return {
     ...base,
@@ -64,6 +69,8 @@ export const openingView = (db: DemoDb, job: DemoJob, seekerUserId: number): Ope
     institution_address: provider?.address ?? "",
     institution_established_year: provider?.established_year ?? null,
     has_applied: Boolean(application),
+    subject_match: job.subject && subjects.length ? subjects.includes(job.subject) : null,
+    board_match: job.board && boards.length ? boards.includes(job.board) : null,
     application_status: application?.status ?? null,
     is_expired: isExpired(job),
   };
@@ -79,6 +86,8 @@ export const applicationView = (db: DemoDb, app: DemoApplication): Application =
     job_title: job?.title,
     job_type: job?.job_type,
     job_status: job?.status,
+    job_subject: job?.subject ?? "",
+    job_board: job?.board ?? "",
     job_category_id: job?.job_category_id,
     job_category_name: categoryName(db, job?.job_category_id),
     job_city_name: cityName(db, job?.city_id),
@@ -105,6 +114,8 @@ export const applicationDetailView = (db: DemoDb, app: DemoApplication, forRole:
       seeker_dob: s?.dob ?? "",
       seeker_category_name: categoryName(db, s?.job_category_id),
       seeker_skills: s?.skills ?? "",
+      seeker_subjects: s?.subjects ?? [],
+      seeker_boards: s?.boards ?? [],
       seeker_expected_salary: s?.expected_salary ?? null,
       seeker_city_name: cityName(db, s?.city_id),
       seeker_state_name: stateName(db, s?.state_id),

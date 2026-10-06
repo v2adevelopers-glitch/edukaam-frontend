@@ -1,12 +1,12 @@
 /*
  * DEMO ONLY. Dashboard summaries for each role.
  */
-import type { ProviderDashboardResponse, SeekerDashboardResponse, StatusBreakdown } from "../types/dashboard.types";
-import type { DemoApplication } from "./demo-db";
-import { getDb } from "./demo-db";
+import type { ProviderDashboardResponse, SeekerDashboardResponse, StatusBreakdown, UpcomingInterview } from "../types/dashboard.types";
+import type { DemoApplication, DemoDb } from "./demo-db";
+import { getDb, todayYmd } from "./demo-db";
 import { fail, ok, SESSION_EXPIRED } from "./demo-response";
 import { currentUserWithRole } from "./demo-session";
-import { byNewest, categoryName, isExpired, openingView, seekerProfileOf } from "./demo-views";
+import { byNewest, categoryName, isExpired, openingView, providerProfileOf, seekerProfileOf } from "./demo-views";
 
 const breakdown = (apps: DemoApplication[]): StatusBreakdown => {
   const out: StatusBreakdown = { applied: 0, shortlisted: 0, interview: 0, hired: 0, rejected: 0 };
@@ -14,6 +14,29 @@ const breakdown = (apps: DemoApplication[]): StatusBreakdown => {
     out[a.status] += 1;
   });
   return out;
+};
+
+// interviews from today onwards, soonest first
+const upcomingInterviews = (db: DemoDb, apps: DemoApplication[], limit = 5): UpcomingInterview[] => {
+  const today = todayYmd();
+  return apps
+    .filter((a) => a.status === "interview" && a.interview && a.interview.date >= today)
+    .sort((a, b) => `${a.interview?.date} ${a.interview?.time}`.localeCompare(`${b.interview?.date} ${b.interview?.time}`))
+    .slice(0, limit)
+    .map((a) => {
+      const job = db.jobs.find((j) => j.id === a.job_id);
+      return {
+        application_id: a.id,
+        application_code: a.application_code,
+        date: a.interview?.date ?? "",
+        time: a.interview?.time ?? "",
+        mode: a.interview?.mode ?? "in_person",
+        venue: a.interview?.venue ?? "",
+        job_title: job?.title ?? "",
+        seeker_name: seekerProfileOf(db, a.seeker_id)?.full_name ?? "",
+        institution_name: job ? providerProfileOf(db, job.provider_id)?.institution_name ?? "" : "",
+      };
+    });
 };
 
 export const demoDashboard = {
@@ -50,6 +73,7 @@ export const demoDashboard = {
       applications_by_status: byStatus,
       top_jobs: topJobs,
       recent_applicants: recent,
+      upcoming_interviews: upcomingInterviews(db, apps),
     });
   },
 
@@ -73,6 +97,7 @@ export const demoDashboard = {
       hired: byStatus.hired,
       applications_by_status: byStatus,
       newest_jobs: newest,
+      upcoming_interviews: upcomingInterviews(db, apps),
     });
   },
 };

@@ -10,16 +10,19 @@ import { getDb, makeCode, nextId, nowIso, todayYmd, updateDb, type DemoDb, type 
 import { listQuery } from "./demo-list";
 import { fail, ok, SESSION_EXPIRED } from "./demo-response";
 import { currentUserWithRole } from "./demo-session";
-import { byNewest, categoryName, hiredCount, jobView, openingView, seekerProfileOf } from "./demo-views";
+import { byNewest, categoryName, hiredCount, isTeachingCategory, jobView, openingView, seekerProfileOf } from "./demo-views";
 
 const JOB_TYPES = ["full_time", "part_time", "contract", "visiting"];
 const JOB_STATUSES = ["open", "closed"];
+const BOARDS = ["cbse", "icse", "state_board", "ib", "igcse", "university", "competitive"];
 
 const isNum = (v: unknown) => v !== null && v !== undefined && v !== "" && !Number.isNaN(Number(v));
 
 const validateJob = (db: DemoDb, j: Partial<JobPayload>): string | null => {
   if (!String(j.title ?? "").trim()) return "Job title is required.";
   if (!db.job_categories.some((c) => c.id === Number(j.job_category_id))) return "Job category is required.";
+  if (j.board && !BOARDS.includes(String(j.board))) return "Select a valid board.";
+  if (!isTeachingCategory(db, Number(j.job_category_id)) && (j.subject || j.board)) return "Subject and board apply to teaching jobs only.";
   if (!JOB_TYPES.includes(String(j.job_type))) return "Job type is required.";
   if (!isNum(j.vacancies) || Number(j.vacancies) < 1 || !Number.isInteger(Number(j.vacancies))) return "Vacancies must be at least 1.";
   if (!String(j.min_qualification ?? "").trim()) return "Minimum qualification is required.";
@@ -39,6 +42,8 @@ const normalise = (p: Partial<JobPayload>) => {
   const out: Partial<DemoJob> = {};
   if (p.title !== undefined) out.title = String(p.title).trim();
   if (p.job_category_id !== undefined) out.job_category_id = Number(p.job_category_id);
+  if (p.subject !== undefined) out.subject = String(p.subject).trim();
+  if (p.board !== undefined) out.board = p.board;
   if (p.job_type !== undefined) out.job_type = p.job_type as DemoJob["job_type"];
   if (p.vacancies !== undefined) out.vacancies = Number(p.vacancies);
   if (p.min_qualification !== undefined) out.min_qualification = String(p.min_qualification).trim();
@@ -52,6 +57,10 @@ const normalise = (p: Partial<JobPayload>) => {
   if (p.status !== undefined) out.status = p.status;
   return out;
 };
+
+// subject match counts more than board match
+const matchScore = (o: { subject_match: boolean | null; board_match: boolean | null }) =>
+  (o.subject_match ? 2 : 0) + (o.board_match ? 1 : 0);
 
 export const demoJobs = {
   /* ---------- provider: own jobs ---------- */
@@ -86,8 +95,11 @@ export const demoJobs = {
 
     const created = updateDb((d) => {
       const id = nextId(d.jobs);
+      const fields = normalise(payload) as DemoJob;
       const job: DemoJob = {
-        ...(normalise(payload) as DemoJob),
+        ...fields,
+        subject: fields.subject ?? "",
+        board: fields.board ?? "",
         id, job_code: makeCode("JOB", id), provider_id: user.id, created_at: nowIso(), updated_at: nowIso(),
       };
       d.jobs.push(job);
@@ -152,13 +164,18 @@ export const demoJobs = {
     const rows = db.jobs
       .filter((j) => j.status === "open" && j.job_category_id === categoryId)
       .map((j) => openingView(db, j, user.id))
-      // still-open jobs first, newest first within each group
-      .sort((a, b) => Number(a.is_expired) - Number(b.is_expired) || byNewest(a, b));
+      // still-open jobs first, then the best subject/board match, then newest
+      .sort((a, b) => Number(a.is_expired) - Number(b.is_expired) || matchScore(b) - matchScore(a) || byNewest(a, b));
     const result = listQuery(rows, filter as unknown as Record<string, unknown>, {
       searchFields: ["title", "institution_name", "job_code"],
-      exactFields: ["institution_type_id", "job_type", "state_id", "city_id"],
+      exactFields: ["institution_type_id", "job_type", "state_id", "city_id", "subject", "board"],
     });
-    return ok("Open jobs loaded", { ...result, job_category_id: categoryId, job_category_name: categoryName(db, categoryId) });
+    return ok("Open jobs loaded", {
+      ...result,
+      job_category_id: categoryId,
+      job_category_name: categoryName(db, categoryId),
+      job_category_is_teaching: isTeachingCategory(db, categoryId),
+    });
   },
 
   async openingDetails(id: number | string): Promise<OpeningDetailResponse> {

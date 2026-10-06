@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Select from 'react-select';
 import DatePicker from 'react-multi-date-picker';
@@ -10,7 +10,7 @@ import { jobsService } from '../../services/jobs.service';
 import { jobCategoriesService } from '../../services/job-categories.service';
 import { statesService } from '../../services/states.service';
 import { citiesService } from '../../services/cities.service';
-import { JOB_STATUS_OPTIONS, JOB_TYPE_OPTIONS } from '../../constants/options';
+import { BOARD_OPTIONS, JOB_STATUS_OPTIONS, JOB_TYPE_OPTIONS, SUBJECT_OPTIONS } from '../../constants/options';
 import { isPastDate } from '../../helper/dateHelper';
 import { SOMETHING_WENT_WRONG } from '../../constants/strings';
 
@@ -19,6 +19,8 @@ const GRAD = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
 const initialJob = {
   title: "",
   job_category_id: null,
+  subject: "",
+  board: "",
   job_type: "",
   vacancies: "1",
   min_qualification: "",
@@ -39,6 +41,7 @@ const AddJob = () => {
   const isEdit = !!editJobId;
 
   const [loading, setLoading] = useState(false);
+  const datePickerRef = useRef(null);
   const [job, setJob] = useState(initialJob);
   const [applicantsCount, setApplicantsCount] = useState(0);
   const [originalLastDate, setOriginalLastDate] = useState("");
@@ -46,6 +49,8 @@ const AddJob = () => {
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [stateOptions, setStateOptions] = useState([]);
   const [cityOptions, setCityOptions] = useState([]);
+
+  const isTeaching = Boolean(categoryOptions.find(o => o.value === job.job_category_id)?.isTeaching);
 
   useEffect(() => {
     loadForm();
@@ -76,7 +81,7 @@ const AddJob = () => {
         jobCategoriesService.list({ page: 1, status: "active" }),
         statesService.list({ page: 1, status: "active" }),
       ]);
-      if (catRes?.success) setCategoryOptions((catRes.resData?.data || []).map(c => ({ value: c?.id, label: c?.name })));
+      if (catRes?.success) setCategoryOptions((catRes.resData?.data || []).map(c => ({ value: c?.id, label: c?.name, isTeaching: Boolean(c?.is_teaching) })));
       else toast.error(catRes?.message);
       if (stateRes?.success) setStateOptions((stateRes.resData?.data || []).map(s => ({ value: s?.id, label: s?.name })));
       else toast.error(stateRes?.message);
@@ -92,6 +97,8 @@ const AddJob = () => {
         setJob({
           title: v?.title || "",
           job_category_id: v?.job_category_id || null,
+          subject: v?.subject || "",
+          board: v?.board || "",
           job_type: v?.job_type || "",
           vacancies: String(v?.vacancies ?? "1"),
           min_qualification: v?.min_qualification || "",
@@ -121,6 +128,11 @@ const AddJob = () => {
     setJob({ ...job, [e.target.name]: e.target.value });
   }
 
+  // subject and board only apply to teaching categories, so a non-teaching category clears them
+  const handleCategoryChange = (o) => {
+    setJob({ ...job, job_category_id: o ? o.value : null, ...(o?.isTeaching ? {} : { subject: "", board: "" }) });
+  }
+
   const handleStateChange = (o) => {
     setJob({ ...job, state_id: o ? o.value : null, city_id: null });
     setCityOptions([]);
@@ -130,6 +142,7 @@ const AddJob = () => {
   const validate = () => {
     if (!job.title.trim()) return "Job title is required";
     if (!job.job_category_id) return "Job category is required";
+    if (isTeaching && !job.board) return "Board is required for a teaching job";
     if (!job.job_type) return "Job type is required";
     if (!(Number(job.vacancies) >= 1) || !Number.isInteger(Number(job.vacancies))) return "Vacancies must be at least 1";
     if (!job.min_qualification.trim()) return "Minimum qualification is required";
@@ -263,12 +276,33 @@ const AddJob = () => {
                   <Select
                     options={categoryOptions}
                     value={categoryOptions.find(o => o.value === job.job_category_id) || null}
-                    onChange={(o) => setJob({ ...job, job_category_id: o ? o.value : null })}
+                    onChange={handleCategoryChange}
                     placeholder="Select job category"
                     isDisabled={categoryLocked}
                     menuPortalTarget={document.body}
                     styles={selectStyles}
                   />, "col-12 col-md-6", categoryLocked ? "Locked because people have already applied in this category." : null
+                )}
+                {isTeaching && field("Subject", false,
+                  <Select
+                    options={SUBJECT_OPTIONS}
+                    value={SUBJECT_OPTIONS.find(o => o.value === job.subject) || null}
+                    onChange={(o) => setJob({ ...job, subject: o ? o.value : "" })}
+                    placeholder="Select subject"
+                    isClearable
+                    menuPortalTarget={document.body}
+                    styles={selectStyles}
+                  />, "col-12 col-md-6", "Leave empty for roles without a single subject, such as Principal."
+                )}
+                {isTeaching && field("Board", true,
+                  <Select
+                    options={BOARD_OPTIONS}
+                    value={BOARD_OPTIONS.find(o => o.value === job.board) || null}
+                    onChange={(o) => setJob({ ...job, board: o ? o.value : "" })}
+                    placeholder="Select board or curriculum"
+                    menuPortalTarget={document.body}
+                    styles={selectStyles}
+                  />
                 )}
                 {field("Job Type", true,
                   <Select
@@ -351,7 +385,11 @@ const AddJob = () => {
                 {field("Last Date to Apply", true,
                   <DatePicker
                     value={job.last_date ? new Date(job.last_date + "T00:00:00") : ""}
-                    onChange={(d) => setJob({ ...job, last_date: d ? d.format("YYYY-MM-DD") : "" })}
+                    ref={datePickerRef}
+                    onChange={(d) => {
+                      setJob({ ...job, last_date: d ? d.format("YYYY-MM-DD") : "" });
+                      datePickerRef.current?.closeCalendar();
+                    }}
                     format="DD MMM YYYY"
                     minDate={new Date()}
                     onOpenPickNewDate={false}

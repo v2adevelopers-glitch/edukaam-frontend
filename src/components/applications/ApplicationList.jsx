@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useContext, useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom';
 import Select from 'react-select';
+import DatePicker from 'react-multi-date-picker';
 import { Modal } from 'react-bootstrap';
 import { useLoadingBar } from 'react-top-loading-bar';
 import { CSVLink } from 'react-csv';
@@ -9,11 +10,14 @@ import withReactContent from 'sweetalert2-react-content';
 import Swal from 'sweetalert2';
 import ContentLoader from '../loader/ContentLoader';
 import DetailView from '../common/DetailView';
+import { DContext } from '../../context/DContext';
 import { applicationsService } from '../../services/applications.service';
 import { jobsService } from '../../services/jobs.service';
 import { jobCategoriesService } from '../../services/job-categories.service';
-import { APPLICATION_STATUS_COLORS, APPLICATION_STATUS_OPTIONS, GENDER_OPTIONS, optionLabel } from '../../constants/options';
-import { ageFromDob, formatDate, formatDateTime } from '../../helper/dateHelper';
+import {
+  APPLICATION_STATUS_COLORS, APPLICATION_STATUS_OPTIONS, BOARD_OPTIONS, GENDER_OPTIONS, INTERVIEW_MODE_OPTIONS, optionLabel,
+} from '../../constants/options';
+import { ageFromDob, formatDate, formatDateTime, formatInterviewWhen, isPastDate } from '../../helper/dateHelper';
 import { experienceText, formatINR, formatLocation } from '../../helper/stringMethods';
 import { SOMETHING_WENT_WRONG } from '../../constants/strings';
 
@@ -30,11 +34,22 @@ const selectStyles = {
 
 const statusLabel = (s) => optionLabel(APPLICATION_STATUS_OPTIONS, s);
 
+const initialInterview = { date: "", time: "10:00", mode: "in_person", venue: "", note: "" };
+
+// what the venue field means for each interview mode
+const VENUE_FIELD = {
+  in_person: { label: "Venue", required: true, placeholder: "e.g. Admin block, Plot 12, Sector 62, Noida" },
+  video: { label: "Meeting Link", required: true, placeholder: "e.g. https://meet.example.com/abc-defg" },
+  phone: { label: "Call Details", required: false, placeholder: "e.g. HR will call from 0120-0000000" },
+};
+
 const ApplicationList = () => {
   const { start, complete } = useLoadingBar({ color: "blue", height: 2 });
   const location = useLocation();
+  const { authState } = useContext(DContext);
 
   const [loading, setLoading] = useState(false);
+  const datePickerRef = useRef(null);
   const [listRes, setListRes] = useState({ pagination: {}, data: [] });
 
   const [pageValue, setPageValue] = useState(1);
@@ -53,6 +68,11 @@ const ApplicationList = () => {
   const [show, setShow] = useState(false);
   const [viewItem, setViewItem] = useState(null);
   const [viewLoading, setViewLoading] = useState(false);
+
+  // schedule / reschedule interview popup
+  const [interviewModal, setInterviewModal] = useState({ show: false, item: null });
+  const [interviewForm, setInterviewForm] = useState(initialInterview);
+  const [savingInterview, setSavingInterview] = useState(false);
 
   useEffect(() => {
     loadFilterOptions();
@@ -136,6 +156,11 @@ const ApplicationList = () => {
 
   const handleStatusChange = async (item, newStatus) => {
     if (newStatus === item?.status) return;
+    // moving to interview needs the interview details, so it goes through the popup
+    if (newStatus === "interview") {
+      openInterview(item);
+      return;
+    }
     const result = await withReactContent(Swal).fire({
       title: "Change status?",
       text: `Are you sure you want to mark ${item?.seeker_name} as ${statusLabel(newStatus)} for "${item?.job_title}"?`,
@@ -160,6 +185,76 @@ const ApplicationList = () => {
     });
     if (!result.isConfirmed) return;
     saveStatus(item, "hired");
+  }
+
+  const openInterview = (item) => {
+    const profile = authState?.userProfile;
+    const defaultVenue = [profile?.address, profile?.city_name].filter(Boolean).join(", ");
+    setInterviewForm(item?.interview
+      ? { ...initialInterview, ...item.interview }
+      : { ...initialInterview, venue: defaultVenue });
+    setInterviewModal({ show: true, item });
+  }
+
+  const closeInterview = () => {
+    setInterviewModal({ show: false, item: null });
+    setInterviewForm(initialInterview);
+  }
+
+  const handleInterviewMode = (o) => {
+    const mode = o ? o.value : "in_person";
+    const profile = authState?.userProfile;
+    const defaultVenue = mode === "in_person" ? [profile?.address, profile?.city_name].filter(Boolean).join(", ") : "";
+    setInterviewForm({ ...interviewForm, mode, venue: mode === interviewForm.mode ? interviewForm.venue : defaultVenue });
+  }
+
+  const validateInterview = () => {
+    const previousDate = interviewModal.item?.interview?.date;
+    if (!interviewForm.date) return "Interview date is required";
+    if (interviewForm.date !== previousDate && isPastDate(interviewForm.date)) return "Interview date cannot be in the past";
+    if (!interviewForm.time) return "Interview time is required";
+    if (!interviewForm.mode) return "Interview mode is required";
+    if (VENUE_FIELD[interviewForm.mode]?.required && !interviewForm.venue.trim()) return `${VENUE_FIELD[interviewForm.mode].label} is required`;
+    if (interviewForm.mode === "video" && !/^https?:\/\/\S+$/.test(interviewForm.venue.trim())) return "Enter a valid meeting link starting with http:// or https://";
+    return null;
+  }
+
+  const handleInterviewSubmit = async (e) => {
+    e.preventDefault();
+    const err = validateInterview();
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    const item = interviewModal.item;
+    const isReschedule = item?.status === "interview";
+    const confirm = await withReactContent(Swal).fire({
+      title: isReschedule ? "Update interview?" : "Schedule interview?",
+      text: `${item?.seeker_name} for "${item?.job_title}" on ${formatInterviewWhen(interviewForm.date, interviewForm.time)}.`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: isReschedule ? "Yes, update" : "Yes, schedule",
+      cancelButtonText: "Cancel"
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+      setSavingInterview(true);
+      const res = await applicationsService.updateStatus(item?.id, {
+        status: "interview",
+        interview: { ...interviewForm, venue: interviewForm.venue.trim(), note: interviewForm.note.trim() },
+      });
+      if (res?.success) {
+        toast.success(res.message);
+        closeInterview();
+        loadApplications();
+      } else {
+        toast.error(res?.message);
+      }
+    } catch (err) {
+      showSwal("Error", SOMETHING_WENT_WRONG, "error")
+    } finally {
+      setSavingInterview(false);
+    }
   }
 
   const handleView = async (id) => {
@@ -262,6 +357,21 @@ const ApplicationList = () => {
   const filterInput = { borderRadius: 8, border: "1px solid #e8edf5", background: "#f8f9fe", fontSize: 13, height: 34 };
   const actionBtn = (bg, color) => ({ width: 32, height: 32, borderRadius: 8, background: bg, color, border: 'none', padding: 0 });
   const selectedJob = jobOptions.find(o => o.value === appliedFilters.job_id);
+  const modalLabel = { fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase", color: "#6c757d", marginBottom: 6 };
+  const modalInput = { borderRadius: 8, border: "1px solid #dfe3ec", fontSize: 13, height: 40, background: "#fff" };
+  const modalSelectStyles = {
+    control: (base, state) => ({
+      ...base, borderRadius: 8, border: state.isFocused ? "1px solid #667eea" : "1px solid #dfe3ec", minHeight: 40,
+      fontSize: 13, boxShadow: state.isFocused ? "0 0 0 3px rgba(102,126,234,.15)" : "none", "&:hover": { borderColor: "#667eea" }
+    }),
+    option: (base, state) => ({
+      ...base, fontSize: 13,
+      background: state.isSelected ? "#667eea" : state.isFocused ? "#eef0ff" : "#fff",
+      color: state.isSelected ? "#fff" : "#1f2a44",
+    }),
+    valueContainer: (base) => ({ ...base, padding: "0 10px" }),
+    menuPortal: (base) => ({ ...base, zIndex: 2000 }),
+  };
 
   return (
     <>
@@ -376,6 +486,7 @@ const ApplicationList = () => {
                   {items.map((item) => {
                     const colors = APPLICATION_STATUS_COLORS[item?.status] || APPLICATION_STATUS_COLORS.applied;
                     const isHired = item?.status === "hired";
+                    const isClosedOut = isHired || item?.status === "rejected";
                     return (
                       <tr key={item?.id} style={{ borderBottom: '1px solid #f0f2f5' }}>
                         <td className="ps-3">
@@ -422,9 +533,19 @@ const ApplicationList = () => {
                           >
                             {APPLICATION_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
+                          {item?.status === "interview" && item?.interview && (
+                            <div className="mt-1" style={{ fontSize: 11, color: "#6741d9", whiteSpace: "nowrap" }}>
+                              <i className="bi bi-calendar-event me-1"></i>{formatInterviewWhen(item.interview.date, item.interview.time)}
+                            </div>
+                          )}
                         </td>
                         <td className="text-center">
                           <div className="d-flex align-items-center justify-content-center gap-2">
+                            <button className="btn btn-sm d-flex align-items-center justify-content-center" onClick={() => openInterview(item)} disabled={isClosedOut}
+                              title={isClosedOut ? "Not available for hired or rejected applicants" : item?.status === "interview" ? "Update interview" : "Schedule interview"}
+                              style={{ ...actionBtn(isClosedOut ? '#e9ecef' : '#f3f0ff', isClosedOut ? '#adb5bd' : '#6741d9'), opacity: 1 }}>
+                              <i className="bi bi-calendar-event-fill" style={{ fontSize: 13 }}></i>
+                            </button>
                             <button className="btn btn-sm d-flex align-items-center justify-content-center" onClick={() => handleHire(item)} disabled={isHired}
                               title={isHired ? "Already hired" : "Hire"} style={{ ...actionBtn(isHired ? '#e9ecef' : '#d4edda', isHired ? '#adb5bd' : '#155724'), opacity: 1 }}>
                               <i className="bi bi-person-check-fill" style={{ fontSize: 14 }}></i>
@@ -493,6 +614,10 @@ const ApplicationList = () => {
                 { label: "Expected Salary", value: viewItem.seeker_expected_salary ? `${formatINR(viewItem.seeker_expected_salary)} / month` : "" },
                 { label: "Location", value: formatLocation(viewItem.seeker_city_name, viewItem.seeker_state_name) },
                 { label: "Skills", value: viewItem.seeker_skills },
+                ...(viewItem.seeker_subjects?.length || viewItem.seeker_boards?.length ? [
+                  { label: "Subjects", value: (viewItem.seeker_subjects || []).join(", ") },
+                  { label: "Boards", value: (viewItem.seeker_boards || []).map(b => optionLabel(BOARD_OPTIONS, b)).join(", ") },
+                ] : []),
                 { label: "About", value: viewItem.seeker_about, full: true },
                 { label: "Job Applied For", value: `${viewItem.job_title ?? ""} (${viewItem.job_code ?? ""})` },
                 { label: "Applied On", value: formatDateTime(viewItem.applied_on) },
@@ -501,9 +626,92 @@ const ApplicationList = () => {
                   label: "Application Status", value: statusLabel(viewItem.status), badge: true,
                   badgeColors: APPLICATION_STATUS_COLORS[viewItem.status],
                 },
+                ...(viewItem.interview ? [
+                  { label: "Interview", value: `${formatInterviewWhen(viewItem.interview.date, viewItem.interview.time)} · ${optionLabel(INTERVIEW_MODE_OPTIONS, viewItem.interview.mode)}` },
+                  { label: VENUE_FIELD[viewItem.interview.mode]?.label || "Venue", value: viewItem.interview.venue },
+                  { label: "Interview Note", value: viewItem.interview.note, full: true },
+                ] : []),
               ]} />
             )}
           </Modal.Body>
+        </Modal>
+
+        {/* Schedule / update interview popup */}
+        <Modal show={interviewModal.show} onHide={closeInterview} centered>
+          <Modal.Header closeButton>
+            <div>
+              <Modal.Title className="d-flex align-items-center gap-2" style={{ fontSize: 16, fontWeight: 700 }}>
+                {interviewModal.item?.status === "interview" ? "Update Interview" : "Schedule Interview"}
+              </Modal.Title>
+              <div style={{ fontSize: 12, color: "#8a94a6", marginTop: 2 }}>
+                {interviewModal.item?.seeker_name} · {interviewModal.item?.job_title}
+              </div>
+            </div>
+          </Modal.Header>
+          <form onSubmit={handleInterviewSubmit}>
+            <Modal.Body>
+              <div className="row g-3">
+                <div className="col-6">
+                  <div style={modalLabel}>Date<span className="text-danger"> *</span></div>
+                  <DatePicker
+                    value={interviewForm.date ? new Date(interviewForm.date + "T00:00:00") : ""}
+                    ref={datePickerRef}
+                    onChange={(d) => {
+                      setInterviewForm({ ...interviewForm, date: d ? d.format("YYYY-MM-DD") : "" });
+                      datePickerRef.current?.closeCalendar();
+                    }}
+                    format="DD MMM YYYY"
+                    minDate={new Date()}
+                    onOpenPickNewDate={false}
+                    portal
+                    zIndex={2100}
+                    inputClass="form-control"
+                    style={modalInput}
+                    placeholder="Select date"
+                  />
+                </div>
+                <div className="col-6">
+                  <div style={modalLabel}>Time<span className="text-danger"> *</span></div>
+                  <input type="time" className="form-control" name="time" value={interviewForm.time}
+                    onChange={(e) => setInterviewForm({ ...interviewForm, time: e.target.value })} style={modalInput} />
+                </div>
+                <div className="col-12">
+                  <div style={modalLabel}>Mode<span className="text-danger"> *</span></div>
+                  <Select
+                    options={INTERVIEW_MODE_OPTIONS}
+                    value={INTERVIEW_MODE_OPTIONS.find(o => o.value === interviewForm.mode) || null}
+                    onChange={handleInterviewMode}
+                    menuPortalTarget={document.body}
+                    styles={modalSelectStyles}
+                  />
+                </div>
+                <div className="col-12">
+                  <div style={modalLabel}>
+                    {VENUE_FIELD[interviewForm.mode]?.label}{VENUE_FIELD[interviewForm.mode]?.required && <span className="text-danger"> *</span>}
+                  </div>
+                  <input type="text" inputMode={interviewForm.mode === "video" ? "url" : "text"} className="form-control" name="venue"
+                    placeholder={VENUE_FIELD[interviewForm.mode]?.placeholder} value={interviewForm.venue}
+                    onChange={(e) => setInterviewForm({ ...interviewForm, venue: e.target.value })} style={modalInput} />
+                </div>
+                <div className="col-12">
+                  <div style={modalLabel}>Note for the Applicant</div>
+                  <textarea className="form-control" rows={3} name="note" placeholder="e.g. Bring original certificates. Prepare a 10 minute demo class."
+                    value={interviewForm.note} onChange={(e) => setInterviewForm({ ...interviewForm, note: e.target.value })}
+                    style={{ ...modalInput, height: "auto" }} />
+                </div>
+              </div>
+            </Modal.Body>
+            <Modal.Footer className="justify-content-end gap-2">
+              <button type="button" onClick={closeInterview} className="btn btn-sm px-4"
+                style={{ background: "#fff", border: "1px solid #dfe3ec", borderRadius: 6, height: 34, fontSize: 13, color: "#444" }}>
+                Cancel
+              </button>
+              <button type="submit" disabled={savingInterview} className="btn btn-sm px-4 text-white fw-semibold"
+                style={{ background: "#4f3df5", border: "none", borderRadius: 6, height: 34, fontSize: 13 }}>
+                {interviewModal.item?.status === "interview" ? "Update Interview" : "Schedule Interview"}
+              </button>
+            </Modal.Footer>
+          </form>
         </Modal>
       </section>
     </>

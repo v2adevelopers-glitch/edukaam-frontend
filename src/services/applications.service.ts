@@ -8,7 +8,7 @@ import type {
   ApplicationListResponse,
   ApplicationMutationResponse,
   ApplicationPayload,
-  ApplicationStatus,
+  ApplicationStatusPayload,
 } from "../types/applications.types";
 
 const endpoints = API_ENDPOINTS.applications;
@@ -70,8 +70,8 @@ export const applicationsService = {
     }
   },
 
-  // Provider: change the application status
-  async update(id: number | string, payload: { status: ApplicationStatus }): Promise<ApplicationMutationResponse> {
+  // Provider: change the application status (send interview details with "interview")
+  async update(id: number | string, payload: ApplicationStatusPayload): Promise<ApplicationMutationResponse> {
     if (USE_DEMO_DATA) return demoApplications.update(id, payload);
     try {
       return await apiClient<ApplicationMutationResponse>(endpoints.update(id), {
@@ -84,7 +84,7 @@ export const applicationsService = {
     }
   },
 
-  async updateStatus(id: number | string, payload: { status: ApplicationStatus }): Promise<ApplicationMutationResponse> {
+  async updateStatus(id: number | string, payload: ApplicationStatusPayload): Promise<ApplicationMutationResponse> {
     return applicationsService.update(id, payload);
   },
 

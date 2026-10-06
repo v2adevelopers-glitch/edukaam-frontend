@@ -2,6 +2,7 @@ import type { Pagination } from "./common.types";
 
 export type JobType = "full_time" | "part_time" | "contract" | "visiting";
 export type JobStatus = "open" | "closed";
+export type Board = "cbse" | "icse" | "state_board" | "ib" | "igcse" | "university" | "competitive";
 
 // Provider's own jobs (GET /jobs)
 export interface JobFilter {
@@ -20,6 +21,9 @@ export interface Job {
   title: string;
   job_category_id: number;
   job_category_name?: string;
+  job_category_is_teaching?: boolean;
+  subject: string; // teaching jobs only, "" otherwise
+  board: Board | ""; // teaching jobs only, "" otherwise
   job_type: JobType;
   vacancies: number;
   min_qualification: string;
@@ -49,6 +53,8 @@ export interface JobListResponse {
 export interface JobPayload {
   title: string;
   job_category_id: number | null;
+  subject: string;
+  board: Board | "";
   job_type: JobType | "";
   vacancies: number | null;
   min_qualification: string;
@@ -86,6 +92,8 @@ export interface OpeningFilter {
   job_type?: JobType | "";
   state_id?: number | string;
   city_id?: number | string;
+  subject?: string;
+  board?: Board | "";
 }
 
 export interface Opening extends Job {
@@ -99,6 +107,9 @@ export interface Opening extends Job {
   institution_address?: string;
   institution_established_year?: number | null;
   has_applied: boolean;
+  // compared with the seeker's profile; null when the job or the profile has no subject/board
+  subject_match: boolean | null;
+  board_match: boolean | null;
   application_status?: string | null;
   is_expired: boolean;
 }
@@ -107,7 +118,13 @@ export interface OpeningListResponse {
   statusCode: number;
   success: boolean;
   message: string;
-  resData: { data: Opening[]; pagination: Pagination; job_category_id?: number | null; job_category_name?: string };
+  resData: {
+    data: Opening[];
+    pagination: Pagination;
+    job_category_id?: number | null;
+    job_category_name?: string;
+    job_category_is_teaching?: boolean;
+  };
 }
 
 export interface OpeningDetailResponse {

@@ -11,6 +11,7 @@ export interface JobCategory {
   id: number;
   code: string;
   name: string;
+  is_teaching: boolean; // teaching jobs carry a subject and a board
   status: RecordStatus;
 }
 

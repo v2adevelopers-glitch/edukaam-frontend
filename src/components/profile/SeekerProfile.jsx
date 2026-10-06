@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react'
+import React, { useContext, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom';
 import Select from 'react-select';
 import DatePicker from 'react-multi-date-picker';
@@ -14,7 +14,7 @@ import { jobCategoriesService } from '../../services/job-categories.service';
 import { statesService } from '../../services/states.service';
 import { citiesService } from '../../services/cities.service';
 import { authStorageService } from '../../services/auth-storage.service';
-import { GENDER_OPTIONS, optionLabel } from '../../constants/options';
+import { BOARD_OPTIONS, GENDER_OPTIONS, SUBJECT_OPTIONS, optionLabel } from '../../constants/options';
 import { ageFromDob, formatDate, todayYmd } from '../../helper/dateHelper';
 import { experienceText, formatINR, formatLocation, initials } from '../../helper/stringMethods';
 import { isValidMobile } from '../../helper/validator';
@@ -32,6 +32,8 @@ const initialProfile = {
   highest_qualification: "",
   experience_years: "",
   skills: "",
+  subjects: [],
+  boards: [],
   expected_salary: "",
   state_id: null,
   city_id: null,
@@ -45,6 +47,7 @@ const SeekerProfile = ({ mode }) => {
   const isEdit = mode === "edit";
 
   const [loading, setLoading] = useState(false);
+  const datePickerRef = useRef(null);
   const [profileRes, setProfileRes] = useState(null);
   const [profile, setProfile] = useState(initialProfile);
   const [originalCategoryId, setOriginalCategoryId] = useState(null);
@@ -52,6 +55,8 @@ const SeekerProfile = ({ mode }) => {
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [stateOptions, setStateOptions] = useState([]);
   const [cityOptions, setCityOptions] = useState([]);
+
+  const isTeaching = Boolean(categoryOptions.find(o => o.value === profile.job_category_id)?.isTeaching);
 
   useEffect(() => {
     if (isEdit) loadEditForm();
@@ -99,7 +104,7 @@ const SeekerProfile = ({ mode }) => {
         jobCategoriesService.list({ page: 1, status: "active" }),
         statesService.list({ page: 1, status: "active" }),
       ]);
-      if (catRes?.success) setCategoryOptions((catRes.resData?.data || []).map(c => ({ value: c?.id, label: c?.name })));
+      if (catRes?.success) setCategoryOptions((catRes.resData?.data || []).map(c => ({ value: c?.id, label: c?.name, isTeaching: Boolean(c?.is_teaching) })));
       else toast.error(catRes?.message);
       if (stateRes?.success) setStateOptions((stateRes.resData?.data || []).map(s => ({ value: s?.id, label: s?.name })));
       else toast.error(stateRes?.message);
@@ -117,6 +122,8 @@ const SeekerProfile = ({ mode }) => {
           highest_qualification: v?.highest_qualification || "",
           experience_years: v?.experience_years !== null && v?.experience_years !== undefined ? String(v.experience_years) : "",
           skills: v?.skills || "",
+          subjects: Array.isArray(v?.subjects) ? v.subjects : [],
+          boards: Array.isArray(v?.boards) ? v.boards : [],
           expected_salary: v?.expected_salary !== null && v?.expected_salary !== undefined ? String(v.expected_salary) : "",
           state_id: v?.state_id || null,
           city_id: v?.city_id || null,
@@ -142,6 +149,11 @@ const SeekerProfile = ({ mode }) => {
     setProfile({ ...profile, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) });
   }
 
+  // subjects and boards only apply to teaching categories, so a non-teaching category clears them
+  const handleCategoryChange = (o) => {
+    setProfile({ ...profile, job_category_id: o ? o.value : null, ...(o?.isTeaching ? {} : { subjects: [], boards: [] }) });
+  }
+
   const handleStateChange = (o) => {
     setProfile({ ...profile, state_id: o ? o.value : null, city_id: null });
     setCityOptions([]);
@@ -155,6 +167,7 @@ const SeekerProfile = ({ mode }) => {
     if (!profile.dob) return "Date of birth is required";
     if (profile.dob >= todayYmd()) return "Date of birth must be in the past";
     if (!profile.job_category_id) return "Primary job category is required";
+    if (isTeaching && profile.subjects.length === 0 && profile.boards.length === 0) return "Add at least one subject or board you teach";
     if (!profile.highest_qualification.trim()) return "Highest qualification is required";
     if (profile.experience_years === "" || Number(profile.experience_years) < 0) return "Experience is required";
     if (profile.expected_salary !== "" && Number(profile.expected_salary) < 0) return "Expected salary cannot be negative";
@@ -250,6 +263,10 @@ const SeekerProfile = ({ mode }) => {
                 { label: "Email", value: p?.email ? <a href={`mailto:${p.email}`}>{p.email}</a> : "" },
                 { label: "Date of Birth", value: p?.dob ? `${formatDate(p.dob)}${age !== null ? ` (${age} years)` : ""}` : "" },
                 { label: "Primary Job Category", value: p?.job_category_name },
+                ...(p?.subjects?.length || p?.boards?.length ? [
+                  { label: "Subjects", value: (p?.subjects || []).join(", ") },
+                  { label: "Boards", value: (p?.boards || []).map(b => optionLabel(BOARD_OPTIONS, b)).join(", ") },
+                ] : []),
                 { label: "Highest Qualification", value: p?.highest_qualification },
                 { label: "Experience", value: experienceText(p?.experience_years) },
                 { label: "Expected Salary", value: p?.expected_salary ? `${formatINR(p.expected_salary)} / month` : "" },
@@ -340,7 +357,11 @@ const SeekerProfile = ({ mode }) => {
                 {field("Date of Birth", true,
                   <DatePicker
                     value={profile.dob ? new Date(profile.dob + "T00:00:00") : ""}
-                    onChange={(d) => setProfile({ ...profile, dob: d ? d.format("YYYY-MM-DD") : "" })}
+                    ref={datePickerRef}
+                    onChange={(d) => {
+                      setProfile({ ...profile, dob: d ? d.format("YYYY-MM-DD") : "" });
+                      datePickerRef.current?.closeCalendar();
+                    }}
                     format="DD MMM YYYY"
                     maxDate={new Date()}
                     onOpenPickNewDate={false}
@@ -368,11 +389,33 @@ const SeekerProfile = ({ mode }) => {
                   <Select
                     options={categoryOptions}
                     value={categoryOptions.find(o => o.value === profile.job_category_id) || null}
-                    onChange={(o) => setProfile({ ...profile, job_category_id: o ? o.value : null })}
+                    onChange={handleCategoryChange}
                     placeholder="Select job category"
                     menuPortalTarget={document.body}
                     styles={selectStyles}
                   />, "col-12 col-md-6", "Find Jobs shows open jobs in this category."
+                )}
+                {isTeaching && field("Subjects You Teach", false,
+                  <Select
+                    isMulti
+                    options={SUBJECT_OPTIONS}
+                    value={SUBJECT_OPTIONS.filter(o => profile.subjects.includes(o.value))}
+                    onChange={(list) => setProfile({ ...profile, subjects: (list || []).map(o => o.value) })}
+                    placeholder="Select subjects"
+                    menuPortalTarget={document.body}
+                    styles={selectStyles}
+                  />, "col-12 col-md-6", "Jobs in these subjects are shown first in Find Jobs."
+                )}
+                {isTeaching && field("Boards", false,
+                  <Select
+                    isMulti
+                    options={BOARD_OPTIONS}
+                    value={BOARD_OPTIONS.filter(o => profile.boards.includes(o.value))}
+                    onChange={(list) => setProfile({ ...profile, boards: (list || []).map(o => o.value) })}
+                    placeholder="Select boards or curricula"
+                    menuPortalTarget={document.body}
+                    styles={selectStyles}
+                  />
                 )}
                 {field("Highest Qualification", true,
                   <input type="text" className="form-control" placeholder="e.g. M.Sc Mathematics + B.Ed" name="highest_qualification"

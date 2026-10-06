@@ -28,9 +28,9 @@ All demo accounts use the password **`Demo@123`**.
 |---|---|---|
 | Job provider (school) | `greenfield.school@example.com` | Greenfield Public School, Noida. 8 jobs and 15 applicants. TGT Mathematics has 2 vacancies, 1 already hired and 2 more applicants, so hiring one more closes the job automatically. |
 | Job provider (coaching institute) | `brightfuture.coaching@example.com` | Bright Future Coaching Institute, Kota. 6 jobs and 9 applicants. |
-| Job seeker (teacher) | `priya.teacher@example.com` | Secondary Teacher. 3 applications (shortlisted, interview, rejected), 3 open jobs still to apply to. |
+| Job seeker (teacher) | `priya.teacher@example.com` | Secondary Teacher (Mathematics, Physics; CBSE). 3 applications (shortlisted, interview with a video call in two days, rejected), 3 open jobs still to apply to. Find Jobs lists the matching Maths and Physics CBSE jobs first. |
 | Job seeker (driver) | `ramesh.driver@example.com` | Driver. 2 applications (shortlisted, applied), 3 open jobs still to apply to. |
-| Job seeker (security guard) | `sunil.guard@example.com` | Security Guard. 2 applications (interview, rejected), 3 open jobs still to apply to. |
+| Job seeker (security guard) | `sunil.guard@example.com` | Security Guard. 2 applications (interview in five days, rejected), 3 open jobs still to apply to. |
 
 Every other seeded account (6 institutions and 20 seekers in total, listed in `src/demo/demo-db.ts`)
 also logs in with `Demo@123`. All people, institutions, phone numbers, emails and websites in the demo
@@ -46,9 +46,21 @@ You can also create new accounts on the Signup page. They are saved in the demo 
 | `/` | both | Dashboard (role-specific stat cards and charts) |
 | `/profile/view`, `/profile/edit` | both | Institution profile or seeker profile |
 | `/jobs/list`, `/jobs/add` | job_provider | My Jobs, Post a Job (Edit opens `/jobs/add` with the job id in router state) |
-| `/applications/list` | job_provider | Applicants on the provider's own jobs (status change, Hire, contact details) |
-| `/openings/list` | job_seeker | Find Jobs: open jobs in the seeker's own category, View and Apply |
+| `/applications/list` | job_provider | Applicants on the provider's own jobs (status change, schedule interview, Hire, contact details) |
+| `/openings/list` | job_seeker | Find Jobs: open jobs in the seeker's own category, best subject/board match first, View and Apply |
 | `/my-applications/list` | job_seeker | My Applications: View, Withdraw while still "Applied" |
+
+### Highlights
+
+- **Subject and board matching.** The first six job categories (Primary Teacher to Principal) are teaching
+  categories. Their jobs carry a subject and a board, and teachers list the subjects and boards they teach
+  in their profile. Find Jobs shows "Your subject" / "Your board" badges, sorts matching jobs first and
+  can filter by subject and board.
+- **Interviews.** Moving an applicant to Interview (from the status select or the calendar button) opens
+  a form for the date, time, mode (in person, video call, phone), venue or meeting link and a note.
+  The applicant sees the details in My Applications, and both dashboards list upcoming interviews.
+- **Phone layout for seekers.** Below 768px wide, Find Jobs and My Applications show one card per row
+  with large buttons, and the extra filters fold behind "More filters".
 
 The sidebar is built from the menu that the (demo) menu API returns for the role. Opening a page the
 role's menu does not include redirects to the dashboard.
@@ -60,6 +72,8 @@ role's menu does not include redirects to the dashboard.
 - Seed dates (last dates to apply, application dates) are relative to the day the store is seeded, so a
   fresh store always has open jobs and a few expired ones.
 - Changes made in one tab are picked up by other tabs of the same browser.
+- The store has a schema version. When a new release changes the shape of the demo data, a store saved
+  by an older release is replaced with fresh seed data on the next load.
 
 ### Reset the demo data
 
