@@ -445,6 +445,14 @@ const buildSeed = (): DemoDb => {
 
 let cache: DemoDb | null = null;
 
+// Another tab (e.g. the provider in one tab, the seeker in another) changed the demo data:
+// drop the in-memory copy so the next call reads the latest version.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === DEMO_DB_KEY || e.key === null) cache = null;
+  });
+}
+
 const persist = (db: DemoDb): void => {
   try {
     localStorage.setItem(DEMO_DB_KEY, JSON.stringify(db));
