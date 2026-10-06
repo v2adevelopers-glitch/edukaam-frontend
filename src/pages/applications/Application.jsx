@@ -1,5 +1,5 @@
 import React from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import ApplicationList from '../../components/applications/ApplicationList'
 import { NoAccessRedirect, useModuleAccess } from '../../helper/access'
 
@@ -8,13 +8,15 @@ const METHODS = ["list"];
 
 const Application = () => {
     let { method } = useParams();
+    const location = useLocation();
     const hasAccess = useModuleAccess("applications");
 
     if (!hasAccess || !METHODS.includes(method)) return <NoAccessRedirect />;
 
     return (
         <>
-            {method === "list" && <ApplicationList />}
+            {/* keyed by location so a new { jobId } in router state re-applies the job filter */}
+            {method === "list" && <ApplicationList key={location.key} />}
         </>
     )
 }
