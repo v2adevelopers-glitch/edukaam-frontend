@@ -1,0 +1,34 @@
+/* Loader wrappers used by ContentLoader */
+.spin-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 0;
+}
+
+.content-loader {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+}
+
+/* Inline row action buttons keep their tint on hover */
+.table .btn:hover {
+  filter: brightness(0.95);
+}
+
+/* Long text in tables wraps instead of stretching the layout on phones */
+.table td {
+  font-size: 13px;
+}
+
+/* react-multi-date-picker: full-width input like the other form controls */
+.rmdp-container {
+  width: 100%;
+}
+
+/* SweetAlert above react-bootstrap modals */
+.swal2-container {
+  z-index: 3000 !important;
+}

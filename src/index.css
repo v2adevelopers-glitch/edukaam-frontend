@@ -1,0 +1,10 @@
+/* Global base styles. Layout and template styles come from public/assets/css/style.css. */
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
