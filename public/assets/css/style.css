@@ -31,7 +31,7 @@ h1, h2, h3, h4, h5, h6 {
 #main {
   margin-top: 60px;
   padding: 20px 30px;
-  transition: all 0.3s;
+  transition: margin-left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   min-height: calc(100vh - 60px - 64px);
 }
 
@@ -245,7 +245,7 @@ h1, h2, h3, h4, h5, h6 {
   bottom: 0;
   width: 300px;
   z-index: 996;
-  transition: all 0.3s;
+  transition: left 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
   padding: 20px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -280,10 +280,13 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 1199px) {
   .toggle-sidebar .sidebar {
     left: 0;
+    box-shadow: 0 0 40px rgba(1, 41, 112, 0.2);
   }
 
   .toggle-sidebar .sidebar-backdrop {
-    display: block;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
   }
 }
 
@@ -299,11 +302,14 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sidebar-backdrop {
-  display: none;
   position: fixed;
   inset: 60px 0 0 0;
   background: rgba(1, 41, 112, 0.25);
   z-index: 995;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
 .sidebar-nav {

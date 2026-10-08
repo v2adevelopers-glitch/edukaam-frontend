@@ -175,7 +175,7 @@ const Signup = () => {
                 const selected = signup.role_code === c.role;
                 return (
                   <div className="col-12 col-md-6" key={c.role}>
-                    <button type="button" role="radio" aria-checked={selected} onClick={() => handleRole(c.role)} style={roleCard(selected)}>
+                    <button type="button" role="radio" aria-checked={selected} onClick={() => handleRole(c.role)} className="role-card" style={roleCard(selected)}>
                       <div className="d-flex align-items-center gap-3">
                         <div className="rounded-circle d-flex align-items-center justify-content-center"
                           style={{ width: 44, height: 44, flexShrink: 0, background: selected ? GRAD : "#f1f3fb", color: selected ? "#fff" : "#667eea" }}>

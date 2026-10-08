@@ -460,7 +460,7 @@ const ApplicationList = () => {
         <div className="card border-0 shadow-sm" style={{ borderRadius: 14, overflow: "hidden" }}>
           <div style={{ position: 'relative' }}>
             {loading && (
-              <div style={{
+              <div className="list-overlay" style={{
                 position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                 background: 'rgba(255,255,255,0.6)', display: 'flex',
                 justifyContent: 'center', alignItems: 'center', zIndex: 10

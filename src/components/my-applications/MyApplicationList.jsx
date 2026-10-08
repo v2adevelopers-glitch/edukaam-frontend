@@ -294,7 +294,7 @@ const MyApplicationList = () => {
         <div className="card border-0 shadow-sm" style={{ borderRadius: 14, overflow: "hidden" }}>
           <div style={{ position: 'relative', minHeight: loading && items.length === 0 ? 120 : undefined }}>
             {loading && (
-              <div style={{
+              <div className="list-overlay" style={{
                 position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                 background: 'rgba(255,255,255,0.6)', display: 'flex',
                 justifyContent: 'center', alignItems: 'center', zIndex: 10
@@ -375,7 +375,7 @@ const MyApplicationList = () => {
               {items.map((item) => {
                 const canWithdraw = item?.status === "applied";
                 return (
-                  <div key={item?.id} className="p-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
+                  <div key={item?.id} className="p-3 list-card" style={{ borderBottom: "1px solid #f0f2f5" }}>
                     <div className="d-flex justify-content-between align-items-start gap-2">
                       <div style={{ minWidth: 0 }}>
                         <div className="fw-bold text-dark" style={{ fontSize: 15 }}>{item?.job_title}</div>

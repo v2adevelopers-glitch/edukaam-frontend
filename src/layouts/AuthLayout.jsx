@@ -16,7 +16,7 @@ const AuthLayout = ({ children, wide = false }) => {
                   <span>{SITE_CONFIG.brandName}</span>
                 </Link>
               </div>
-              {children}
+              <div className="auth-card">{children}</div>
               <div className="text-center mt-3" style={{ fontSize: 12, color: "#8a9ab5" }}>
                 {SITE_CONFIG.tagline}
               </div>

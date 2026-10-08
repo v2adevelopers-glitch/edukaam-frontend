@@ -7,6 +7,7 @@ import withReactContent from 'sweetalert2-react-content';
 import Swal from 'sweetalert2';
 import ContentLoader from '../loader/ContentLoader';
 import PageTitleAndSnackBar from '../common/PageTitleAndSnackBar';
+import CountUp from '../common/CountUp';
 import { DContext } from '../../context/DContext';
 import { dashboardService } from '../../services/dashboard.service';
 import { APPLICATION_STATUS_COLORS, APPLICATION_STATUS_OPTIONS, INTERVIEW_MODE_OPTIONS, optionLabel } from '../../constants/options';
@@ -55,7 +56,7 @@ const ProviderDashboard = () => {
       <div className="card-body pb-2">
         <h5 className="card-title">Upcoming Interviews <span>| next {Math.max(interviews.length, 1)}</span></h5>
         {interviews.map(iv => (
-          <div key={iv?.application_id} className="d-flex align-items-start gap-3 py-2" style={{ borderTop: "1px solid #f0f2f5" }}>
+          <div key={iv?.application_id} className="d-flex align-items-start gap-3 py-2 list-card" style={{ borderTop: "1px solid #f0f2f5" }}>
             <div className="rounded d-flex flex-column align-items-center justify-content-center"
               style={{ width: 46, height: 46, background: "#f3f0ff", color: "#6741d9", flexShrink: 0, lineHeight: 1.1 }}>
               <span style={{ fontSize: 16, fontWeight: 700 }}>{moment(iv?.date).format("DD")}</span>
@@ -89,7 +90,7 @@ const ProviderDashboard = () => {
               <i className={"bi " + icon}></i>
             </div>
             <div className="ps-3">
-              <h6>{value}</h6>
+              <h6><CountUp value={value} /></h6>
               {note && <span className="text-muted small">{note}</span>}
             </div>
           </div>
